@@ -5,24 +5,29 @@ import statsmodels.formula.api as sm
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 from sklearn.feature_selection import SequentialFeatureSelector
-from sklearn.model_selection import TimeSeriesSplit¶
-
+from sklearn.model_selection import TimeSeriesSplit
 
 
 def data_preparation(file_location, lags):
-    # assumes that the variables are stationary
+    # assumes that the variables are stationary, date column is called "date"
+
     # Import the dataset
     dataset = pd.read_csv(file_location)
+
+    ## convert date column to datetime
+    dataset['date'] = pd.to_datetime(dataset['date'], format = "%d/%m/%Y").dt.date
+
+    ## make date column the index
+    dataset.set_index('date', inplace=True)
+
     X = dataset.iloc[:, :-1].values
     X = X.loc[~X.isna()]
     y = dataset.iloc[:, -1].values
     y = y.loc[~y.isna()]
 
-    ### df['Date'] = pd.to_datetime(df['Date'], format = "%d/%m/%Y").dt.date
 
 
-
-    // use TimeSeriesSplit to split the data
+    ## use TimeSeriesSplit to split the data
     tscv = TimeSeriesSplit(n_splits=5)
     for train_index, test_index in tscv.split(X):
         print("TRAIN:", train_index, "TEST:", test_index)
