@@ -1,5 +1,14 @@
 
-## import libraries
+#
+##### To do:
+# 1. Format output of regression_OLS function
+# 2. Make sure the dates for each split is clear
+# 3. Save the in-sample and oos results in a csv file across the different splits
+# 4. Visually summarize the results for the different splits
+# 5. Model averaging: what to do? Average (simple or weighted) as well as min, max, median, etc.?
+
+
+# # import libraries
 import pandas as pd
 import statsmodels.api as sm
 from sklearn.linear_model import LinearRegression
@@ -72,7 +81,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
     ## write a code that loops over each dataframe in the df dictionary
     # Create empty dictionary to store the results
-    results_dict = pd.DataFrame()
+    results_dict = {}
 
     for split in data:
         ## split is the name of the split (contains all the splits=splits dataframe), split_df is the dataframe (each split contains two split_dfs, and we only want to look at the "train" ones):
@@ -104,8 +113,42 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
             # Fit the model without the feature with the highest p-value
             model = sm.OLS(y, X).fit()
 
+        ## predict the values of the test set using the estimated model
+        # Store the test set in a new variable
+        test_set = data[split][f"{split}_test"]
 
+        # Separate the target variable and the features
+        y_test = test_set.iloc[:, 0]
+        X_test = test_set.iloc[:, 1:]
 
+        # Add a constant to the features
+        X_test = sm.add_constant(X_test)
 
-        # Store the results in a dictionary
-        results_dict[split] = model.summary()
+        # Predict the target variable
+        y_pred = model.predict(X_test)
+
+        ## calculate the following for y_test and y_pred: R2, MAE, MSE, RMSE, MAPE
+        # Calculate R2
+        oos_r2 = r2_score(y_test, y_pred)
+        results_dict[f'{split}_oos_r2'] = oos_r2
+
+        # Calculate MAE
+        oos_mae = np.mean(np.abs(y_test - y_pred))
+        results_dict[f'{split}_oos_mae'] = oos_mae
+
+        # Calculate MSE
+        oos_mse = np.mean((y_test - y_pred)**2)
+        results_dict[f'{split}_oos_mse'] = oos_mse
+
+        # Calculate RMSE
+        oos_rmse = np.sqrt(oos_mse)  # Fix the variable name to "oos_mse"
+        results_dict[f'{split}_oos_rmse'] = oos_rmse
+
+        # Calculate MAPE
+        oos_mape = np.mean(np.abs((y_test - y_pred) / y_test)) * 100
+        results_dict[f'{split}_oos_mape'] = oos_mape
+
+        ## store the results of the final model in a dictionary
+        results_dict[f'{split}_summary'] = model.summary()
+
+    return results_dict
