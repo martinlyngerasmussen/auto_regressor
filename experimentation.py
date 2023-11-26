@@ -6,9 +6,9 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 from sklearn.feature_selection import SequentialFeatureSelector
 from sklearn.model_selection import TimeSeriesSplit
+import numpy as np
 
-
-def data_preparation(file_location, lags):
+def data_preparation(file_location, lags = 5, splits = 5):
     # assumes that the variables are stationary, date column is called "date"
 
     # Import the dataset
@@ -18,33 +18,49 @@ def data_preparation(file_location, lags):
     dataset['date'] = pd.to_datetime(dataset['date'], format = "%d/%m/%Y").dt.date
 
     ## make date column the index
-    dataset.set_index('date', inplace=True)
+    df = dataset
+    df.set_index('date', inplace=True)
 
-    X = dataset.iloc[:, :-1].values
-    X = X.loc[~X.isna()]
-    y = dataset.iloc[:, -1].values
-    y = y.loc[~y.isna()]
+    ## create splits of the DataFrame, where splits = splits. Each split is a DataFrame. Name each split as df_split_i.
+    # Split the DataFrame and store each split in a dictionary
+    split_dfs = pd.DataFrame()
+    split_dfs = {f"split_{i+1}": df for i, df in enumerate(np.array_split(df, splits))}
 
+    # Creating a dictionary for each split
+    splits_dict = {}
 
+    for split in split_dfs:
+        # Calculate the split point for 80-20 division
+        split_point = int(len(split_dfs[split]) * 0.8)
 
-    ## use TimeSeriesSplit to split the data
-    tscv = TimeSeriesSplit(n_splits=5)
-    for train_index, test_index in tscv.split(X):
-        print("TRAIN:", train_index, "TEST:", test_index)
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
+        # Create and store the training and test sets in a new dictionary for each split
+        splits_dict[split] = {
+            f"{split}_train": split_dfs[split].iloc[:split_point],
+            f"{split}_test": split_dfs[split].iloc[split_point:]
+        }
 
-    #### REDO TO ADD LAGS TO THE SPLITTED DATA
-    ## create lags of the variables
-    X = pd.DataFrame(X)
-    y = pd.DataFrame(y)
-    for i in range(1, lags+1):
-        X = pd.concat([X, X.shift(i)], axis=1)
-        y = pd.concat([y, y.shift(i)], axis=1)
-    X = X.iloc[lags:, :]
-    y = y.iloc[lags:, :]
+    for split, split_df in split_dfs.items():
+            # Store the original column names (excluding the date index)
+            original_columns = split_df.columns
 
-    return X, y
+            # Create lagged features for each split, excluding the index (date)
+            for lag in range(1, lags + 1):
+                for col in original_columns:
+                    split_df[f'{col}_lag{lag}'] = split_df[col].shift(lag)
+
+            # Drop the initial rows with NaN values due to lagging
+            split_df.dropna(inplace=True)
+
+            # Calculate the split point for 80-20 division
+            split_point = int(len(split_df) * 0.8)
+
+            # Split into training and testing sets
+            splits_dict[split] = {
+                f"{split}_train": split_df.iloc[:split_point],
+                f"{split}_test": split_df.iloc[split_point:]
+            }
+
+    return splits_dict
 
 
 def regression_OLS():
