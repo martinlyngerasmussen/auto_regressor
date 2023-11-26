@@ -1,12 +1,13 @@
 
 ## import libraries
 import pandas as pd
-import statsmodels.formula.api as sm
+import statsmodels.api as sm
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 from sklearn.feature_selection import SequentialFeatureSelector
 from sklearn.model_selection import TimeSeriesSplit
 import numpy as np
+
 
 def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
     ###### assumes that the variables are stationary, date column is called "date"
@@ -67,44 +68,44 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
     return splits_dict
 
 def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
-    df = data_preparation(file_location, lags, splits, train_share)
+    data = data_preparation(file_location, lags, splits, train_share)
 
     ## write a code that loops over each dataframe in the df dictionary
     # Create empty dictionary to store the results
-    results_dict = {}
+    results_dict = pd.DataFrame()
 
-    for split, split_df in df.items():
-        if 'train' in split:  # fit the model only to the training set
-            # Store the original column names (excluding the date index)
-            original_columns = split_df.columns
+    for split in data:
+        ## split is the name of the split (contains all the splits=splits dataframe), split_df is the dataframe (each split contains two split_dfs, and we only want to look at the "train" ones):
+        split_df = data[split][f"{split}_train"]
 
-            # Create the feature matrix (X) and target vector (y)
-            X = split_df[original_columns[1:]]
-            y = split_df[original_columns[0]]
+        ## fit the OLS model on the split_df
+        # Separate the target variable and the features
+        y = split_df.iloc[:, 0]
+        X = split_df.iloc[:, 1:]
 
-            # Perform backward elimination until all p-values are smaller than the cut-off
-            while True:
-                # Fit the model
-                model = sm.OLS(y, X).fit()
+        # Add a constant to the features
+        X = sm.add_constant(X)
 
-                # Store the results for each split
-                results_dict[split] = {
-                    'model': model,
-                    'r2': model.rsquared,
-                    'intercept': model.params[0],
-                    'coefficients': model.params[1:],
-                    'p_values': model.pvalues[0:],
-                }
+        # Fit the OLS model
+        model = sm.OLS(y, X).fit()
 
-                # Find the variable with the highest p-value
-                max_p_value = model.pvalues[1:].max()
+        # Perform backward elimination until all p-values are smaller than the cut-off value
+        # Initialize the loop
+        p_max = 1
+        while p_max > p_cutoff:
+            # Find the variable with the highest p-value
+            p = model.pvalues
+            p_max = max(p)
+            feature_max_p = p.idxmax()
 
-                # Check if the highest p-value is greater than the cut-off
-                if max_p_value > p_cutoff:
-                    # Remove the variable with the highest p-value
-                    max_p_value_index = model.pvalues[1:].idxmax()
-                    X = X.drop(columns=max_p_value_index)
-                else:
-                    break
+            # Remove the feature with the highest p-value
+            X = X.drop(feature_max_p, axis=1)
 
-    return results_dict
+            # Fit the model without the feature with the highest p-value
+            model = sm.OLS(y, X).fit()
+
+
+
+
+        # Store the results in a dictionary
+        results_dict[split] = model.summary()
