@@ -66,7 +66,6 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
 
     return splits_dict
 
-
 def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     df = data_preparation(file_location, lags, splits, train_share)
 
@@ -83,51 +82,29 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
             X = split_df[original_columns[1:]]
             y = split_df[original_columns[0]]
 
-            # Fit the model
-            model = sm.OLS(y, X).fit()
+            # Perform backward elimination until all p-values are smaller than the cut-off
+            while True:
+                # Fit the model
+                model = sm.OLS(y, X).fit()
 
-            # Store the results for each split
-            results_dict[split] = {
-                'model': model,
-                'r2': model.rsquared,
-                'intercept': model.params[0],
-                'coefficients': model.params[1:],
-                'p_values': model.pvalues[0:],
-            }
-        # if split_df name contains train, then pass. Else, continue with the code.
+                # Store the results for each split
+                results_dict[split] = {
+                    'model': model,
+                    'r2': model.rsquared,
+                    'intercept': model.params[0],
+                    'coefficients': model.params[1:],
+                    'p_values': model.pvalues[0:],
+                }
 
-        # Store the original column names (excluding the date index)
-        original_columns = split_df.columns
+                # Find the variable with the highest p-value
+                max_p_value = model.pvalues[1:].max()
 
-        # Create the feature matrix (X) and target vector (y)
-        X = split_df[original_columns[1:]]
-        y = split_df[original_columns[0]]
+                # Check if the highest p-value is greater than the cut-off
+                if max_p_value > p_cutoff:
+                    # Remove the variable with the highest p-value
+                    max_p_value_index = model.pvalues[1:].idxmax()
+                    X = X.drop(columns=max_p_value_index)
+                else:
+                    break
 
-        # Fit the model
-        model = sm.OLS(y, X).fit()
-
-        # Store the results for each split
-        results_dict[split] = {
-            'model': model,
-            'r2': model.rsquared,
-            'intercept': model.params[0],
-            'coefficients': model.params[1:],
-            'p_values': model.pvalues[0:],
-        }
-
-
-
-
-
-## https://gist.github.com/vb100/177bad75b7506f93fbe12323353683a0
-def backwardElimination(x, sl):
-    numVars = len(x[0])
-    for i in range(0, numVars):
-        regressor_OLS = sm.OLS(y, x).fit()
-        maxVar = max(regressor_OLS.pvalues).astype(float)
-        if maxVar > sl:
-            for j in range(0, numVars - i):
-                if (regressor_OLS.pvalues[j].astype(float) == maxVar):
-                    x = np.delete(x, j, 1)
-    regressor_OLS.summary()
-    return x
+    return results_dict
