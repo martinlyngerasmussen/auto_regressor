@@ -8,17 +8,20 @@ from sklearn.feature_selection import SequentialFeatureSelector
 from sklearn.model_selection import TimeSeriesSplit
 import numpy as np
 
-def data_preparation(file_location, lags = 5, splits = 5):
-    # assumes that the variables are stationary, date column is called "date"
+def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
+    ###### assumes that the variables are stationary, date column is called "date"
+    ###### assumes that the dataset is in a csv file
+    ###### assumes that y is the first column in the dataset
+    ###### assumes that X is the rest of the columns in the dataset
 
     # Import the dataset
     dataset = pd.read_csv(file_location)
 
-    ## convert date column to datetime
-    dataset['date'] = pd.to_datetime(dataset['date'], format = "%d/%m/%Y").dt.date
+    ## convert date column to datetime format
+    dataset['date'] = pd.to_datetime(dataset['date'], infer_datetime_format= True).dt.date
 
     ## make date column the index
-    df = dataset
+    df = dataset.copy()
     df.set_index('date', inplace=True)
 
     ## create splits of the DataFrame, where splits = splits. Each split is a DataFrame. Name each split as df_split_i.
@@ -39,6 +42,7 @@ def data_preparation(file_location, lags = 5, splits = 5):
             f"{split}_test": split_dfs[split].iloc[split_point:]
         }
 
+    ## create lags of the variables in each split, divide each split into train and test sets.
     for split, split_df in split_dfs.items():
             # Store the original column names (excluding the date index)
             original_columns = split_df.columns
@@ -51,8 +55,8 @@ def data_preparation(file_location, lags = 5, splits = 5):
             # Drop the initial rows with NaN values due to lagging
             split_df.dropna(inplace=True)
 
-            # Calculate the split point for 80-20 division
-            split_point = int(len(split_df) * 0.8)
+            # Calculate the split point for train-test division
+            split_point = int(len(split_df) * train_share)
 
             # Split into training and testing sets
             splits_dict[split] = {
@@ -63,15 +67,54 @@ def data_preparation(file_location, lags = 5, splits = 5):
     return splits_dict
 
 
-def regression_OLS():
-    ## Import the dataset
-    df = read_data()
-    X = df["X"]
-    y = df["y"]
+def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
+    df = data_preparation(file_location, lags, splits, train_share)
 
-    ## Fit the model
-    model = sm.OLS(y, X).fit()
-    predictions = model.predict(X) # make the predictions by the model
+    ## write a code that loops over each dataframe in the df dictionary
+    # Create empty dictionary to store the results
+    results_dict = {}
+
+    for split, split_df in df.items():
+        if 'train' in split:  # fit the model only to the training set
+            # Store the original column names (excluding the date index)
+            original_columns = split_df.columns
+
+            # Create the feature matrix (X) and target vector (y)
+            X = split_df[original_columns[1:]]
+            y = split_df[original_columns[0]]
+
+            # Fit the model
+            model = sm.OLS(y, X).fit()
+
+            # Store the results for each split
+            results_dict[split] = {
+                'model': model,
+                'r2': model.rsquared,
+                'intercept': model.params[0],
+                'coefficients': model.params[1:],
+                'p_values': model.pvalues[0:],
+            }
+        # if split_df name contains train, then pass. Else, continue with the code.
+
+        # Store the original column names (excluding the date index)
+        original_columns = split_df.columns
+
+        # Create the feature matrix (X) and target vector (y)
+        X = split_df[original_columns[1:]]
+        y = split_df[original_columns[0]]
+
+        # Fit the model
+        model = sm.OLS(y, X).fit()
+
+        # Store the results for each split
+        results_dict[split] = {
+            'model': model,
+            'r2': model.rsquared,
+            'intercept': model.params[0],
+            'coefficients': model.params[1:],
+            'p_values': model.pvalues[0:],
+        }
+
 
 
 
