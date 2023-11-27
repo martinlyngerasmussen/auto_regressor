@@ -14,3 +14,5 @@ To do list and thoughts:
 - Work on #3-4
 - Add VAR functionality to #1. Add test to determine whether VAR should be used. 
 - Use heteroskedasticity and autocorrelation consistent standard errors for model selection in #1
+- Turn into a package
+- Update tests 
