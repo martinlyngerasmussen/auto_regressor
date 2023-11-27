@@ -16,6 +16,7 @@ from sklearn.metrics import r2_score
 from sklearn.feature_selection import SequentialFeatureSelector
 from sklearn.model_selection import TimeSeriesSplit
 import numpy as np
+from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 
 def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
@@ -83,6 +84,14 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     # Create empty dictionary to store the results
     results_dict = {}
 
+    ## import only y from the dataset
+    dataset = pd.read_csv(file_location)
+    dataset['date'] = pd.to_datetime(dataset['date'], infer_datetime_format= True).dt.date
+    df = dataset.copy()
+    df.set_index('date', inplace=True)
+    oos_predictions = pd.DataFrame()
+    oos_predictions["y"] = df.iloc[:, 0]
+
     for split in data:
         ## split is the name of the split (contains all the splits=splits dataframe), split_df is the dataframe (each split contains two split_dfs, and we only want to look at the "train" ones):
         split_df = data[split][f"{split}_train"]
@@ -92,11 +101,28 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         y = split_df.iloc[:, 0]
         X = split_df.iloc[:, 1:]
 
+        # Loop until all VIFs are smaller than the cut-off value
+        vif_cut_off = 5
+        vif_max = 10
+
+        while vif_max > vif_cut_off:
+            # Create a DataFrame with the features and their respective VIFs
+            vif = pd.DataFrame()
+            vif["VIF Factor"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+            vif["features"] = X.columns
+
+            # Find the variable with the highest VIF
+            vif_max = max(vif["VIF Factor"])
+            feature_max_vif = vif[vif["VIF Factor"] == vif_max]["features"]
+
+            # Remove the feature with the highest VIF
+            X = X.drop(feature_max_vif, axis=1)
+
         # Add a constant to the features
         X = sm.add_constant(X)
 
         # Fit the OLS model
-        model = sm.OLS(y, X).fit()
+        model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
 
         # Perform backward elimination until all p-values are smaller than the cut-off value
         # Initialize the loop
@@ -111,11 +137,22 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
             X = X.drop(feature_max_p, axis=1)
 
             # Fit the model without the feature with the highest p-value
-            model = sm.OLS(y, X).fit()
+            model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
+
+        ## store the results of the final model in a dictionary
+        results_dict[f'{split}_summary'] = model.summary()
+
+        final_model = model
+
+        ## add predictions to oos_predictions dataframe
+        oos_predictions[f'{split}_y_fitted'] = final_model.predict(X)
 
         ## predict the values of the test set using the estimated model
         # Store the test set in a new variable
         test_set = data[split][f"{split}_test"]
+
+        ## exclude columns from test_set that are not in train_set
+        test_set = test_set[X.columns]
 
         # Separate the target variable and the features
         y_test = test_set.iloc[:, 0]
@@ -125,7 +162,10 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         X_test = sm.add_constant(X_test)
 
         # Predict the target variable
-        y_pred = model.predict(X_test)
+        y_pred = final_model.predict(X_test)
+
+        ## add to oos_predictions dataframe
+        oos_predictions[f'{split}_y_pred'] = y_pred
 
         ## calculate the following for y_test and y_pred: R2, MAE, MSE, RMSE, MAPE
         # Calculate R2
@@ -148,7 +188,6 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         oos_mape = np.mean(np.abs((y_test - y_pred) / y_test)) * 100
         results_dict[f'{split}_oos_mape'] = oos_mape
 
-        ## store the results of the final model in a dictionary
-        results_dict[f'{split}_summary'] = model.summary()
 
-    return results_dict
+
+    return results_dict, oos_predictions
