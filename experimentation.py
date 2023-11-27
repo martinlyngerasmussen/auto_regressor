@@ -1,5 +1,4 @@
 
-#
 ##### To do:
 # 1. Format output of regression_OLS function
 # 2. Make sure the dates for each split is clear
@@ -45,7 +44,7 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
 
     for split in split_dfs:
         # Calculate the split point for 80-20 division
-        split_point = int(len(split_dfs[split]) * 0.8)
+        split_point = int(len(split_dfs[split]) * train_share)
 
         # Create and store the training and test sets in a new dictionary for each split
         splits_dict[split] = {
@@ -151,15 +150,18 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         # Store the test set in a new variable
         test_set = data[split][f"{split}_test"]
 
-        ## exclude columns from test_set that are not in train_set
-        test_set = test_set[X.columns]
-
         # Separate the target variable and the features
         y_test = test_set.iloc[:, 0]
         X_test = test_set.iloc[:, 1:]
 
+        ## exclude columns from test_set that are not in train_set
+        X_test = X_test[X.columns.intersection(X_test.columns)]
+
+
         # Add a constant to the features
-        X_test = sm.add_constant(X_test)
+        if "const" in X.columns:
+            X_test = sm.add_constant(X_test)
+
 
         # Predict the target variable
         y_pred = final_model.predict(X_test)
