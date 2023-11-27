@@ -1,7 +1,7 @@
 This is a project I am working on in my spare time to help automate model selection for economic and financial time series. The idea is to automate the work flow from dataset to final model(s) used to explain or predict.
 
 The end goal of the project is to fit optimal models automatically based on any given time series data:
-1) Model selection: fit multiple models (OLS and, if selected, VAR) across multiple sub-sets of the data. Insignificant (lags) of variables are removed one-by-one for each sub-set of the data. This leaves one optimal model for each subset of the data.#
+1) Model selection: fit multiple models (OLS and, if selected, VAR) across multiple sub-sets of the data. Insignificant (lags) of variables are removed one-by-one for each sub-set of the data. This leaves one optimal model for each subset of the data.
 2) Time series cross validation: for each sub-set (split) of the data, the model is trained on part of the data (e.g. 80%), and the out-of-sample performance of the fitted model is tested for the remainder of the sample (e.g. 20%). Lags are only added once the data has been split into the different slices and each slice has been divided into train and test datasets (to avoid look-ahead bias).
 - ![image](https://github.com/martinlyngerasmussen/auto_econometrics/assets/103667557/93e230bc-075b-41a7-ad4b-61e9e0f6b49f)
 
