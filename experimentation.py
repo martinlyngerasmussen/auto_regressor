@@ -123,6 +123,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         # Fit the OLS model
         model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
 
+
         # Perform backward elimination until all p-values are smaller than the cut-off value
         # Initialize the loop
         p_max = 1
@@ -139,7 +140,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
             model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
 
         ## store the results of the final model in a dictionary
-        results_dict[f'{split}_summary'] = model.summary()
+        results_dict[f'{split}_summary'] = model
 
         final_model = model
 
@@ -191,5 +192,44 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         results_dict[f'{split}_oos_mape'] = oos_mape
 
 
+        #### create a summary table
 
-    return results_dict, oos_predictions
+        # Initialize lists to store table rows
+        in_sample_rows = []
+        out_of_sample_rows = []
+
+        # Iterate through each split
+        for split in results_dict:
+            if 'summary' in split:
+                model_summary = results_dict[split]
+
+                # In-sample results: Extract adjusted R-squared and model parameters
+                adj_r2 = final_model.rsquared_adj
+                params = final_model.params
+                pvalues = final_model.pvalues
+
+                # Construct the row for in-sample results
+                in_sample_row = [adj_r2] + [f"{param:.3f}" + ("***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "") for param, p in zip(params, pvalues)]
+                in_sample_rows.append(in_sample_row)
+            else:
+                # Out-of-sample results
+                # oos_r2 = results_dict[f'{split}_oos_r2']
+                # oos_mae = results_dict[f'{split}_oos_mae']
+                # oos_mse = results_dict[f'{split}_oos_mse']
+                # oos_rmse = results_dict[f'{split}_oos_rmse']
+                # oos_mape = results_dict[f'{split}_oos_mape']
+
+                # Construct the row for out-of-sample results
+                out_of_sample_row = [oos_r2, oos_mae, oos_mse, oos_rmse, oos_mape]
+                out_of_sample_rows.append(out_of_sample_row)
+
+        # Convert lists to DataFrames
+        ## make an in_sample_df that contains in_sample_rows and columns= adjusted 2, intercept, beta1, beta2, ..., beta_n etc.
+        in_sample_df = pd.DataFrame(in_sample_rows, columns=['Adj. R2'] + list(X.columns))
+
+        out_of_sample_df = pd.DataFrame(out_of_sample_rows, columns=['OOS R2', 'OOS MAE', 'OOS MSE', 'OOS RMSE', 'OOS MAPE'])
+
+        # Combine the two DataFrames
+        combined_df = pd.concat([in_sample_df, out_of_sample_df], axis=1)
+
+    return combined_df
