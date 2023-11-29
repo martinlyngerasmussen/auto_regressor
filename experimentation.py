@@ -191,6 +191,45 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     #### create a summary table the split-by-split results. Each column is a split, each row is a metric.
     ## ALL variables, even those that are not significant, are included in the summary table. This includes lags of y.
     # Create a DataFrame with the results
+    # Assuming results_dict is the output from your regression_OLS function
+    # Create DataFrame for Out-of-Sample Performance
+    oos_metrics = ['oos_r2', 'oos_mae', 'oos_mse', 'oos_rmse']
+    oos_df = pd.DataFrame({split: {metric: results_dict[f'{split}_{metric}'] for metric in oos_metrics}
+                        for split in data.keys()})
 
+    # Create DataFrame for In-Sample Performance
+    # Initialize an empty DataFrame
+    in_sample_df = pd.DataFrame()
 
-    return results_dict, oos_predictions
+    for split, model in results_dict.items():
+        if '_summary' in split:
+            # Extract coefficients and p-values
+            coeffs = model.params
+            pvals = model.pvalues
+
+            # Format p-values as significance levels
+            significance = pvals.apply(lambda x: '***' if x < 0.001 else '**' if x < 0.01 else '*' if x < 0.05 else '')
+
+            # Combine coefficients and significance
+            in_sample_data = coeffs.astype(str) + significance
+
+            # Add to DataFrame
+            in_sample_df[split] = in_sample_data
+
+    # Export to CSV
+    oos_df.to_csv("out_of_sample_performance.csv")
+    in_sample_df.to_csv("in_sample_performance.csv")
+
+    # Create headers as DataFrames
+    oos_header = pd.DataFrame(["Out-of-Sample Performance"], columns=["Metric"])
+    in_sample_header = pd.DataFrame(["In-Sample Performance"], columns=["Metric"])
+
+    # Combine the DataFrames
+    combined_df = pd.concat([oos_header, oos_df.reset_index(),
+                            in_sample_header, in_sample_df.reset_index()],
+                            axis=0, ignore_index=True)
+
+    # Adjust column names if necessary
+    combined_df.columns = ['Metric'] + [f'Split {i+1}' for i in range(len(data.keys()))]
+
+    return combined_df
