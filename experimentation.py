@@ -16,6 +16,7 @@ from sklearn.feature_selection import SequentialFeatureSelector
 from sklearn.model_selection import TimeSeriesSplit
 import numpy as np
 from statsmodels.stats.outliers_influence import variance_inflation_factor
+from prettytable import PrettyTable
 
 
 def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
@@ -91,6 +92,8 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     oos_predictions = pd.DataFrame()
     oos_predictions["y"] = df.iloc[:, 0]
 
+
+
     for split in data:
         ## split is the name of the split (contains all the splits=splits dataframe), split_df is the dataframe (each split contains two split_dfs, and we only want to look at the "train" ones):
         split_df = data[split][f"{split}_train"]
@@ -140,7 +143,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
             model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
 
         ## store the results of the final model in a dictionary
-        results_dict[f'{split}_summary'] = model
+        # results_dict[f'{split}_summary'] = model.summary()
 
         final_model = model
 
@@ -162,7 +165,6 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         # Add a constant to the features
         if "const" in X.columns:
             X_test = sm.add_constant(X_test)
-
 
         # Predict the target variable
         y_pred = final_model.predict(X_test)
@@ -187,49 +189,52 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         oos_rmse = np.sqrt(oos_mse)  # Fix the variable name to "oos_mse"
         results_dict[f'{split}_oos_rmse'] = oos_rmse
 
+        ## find the min and max date of the test set
+        start_date = min(test_set.index)
+        end_date = max(test_set.index)
+        results_dict[f'{split}_oos_Start'] = start_date
+        results_dict[f'{split}_oos_End'] = end_date
 
+
+    ########################################################################################################
     #### create a summary table the split-by-split results. Each column is a split, each row is a metric.
-    ## ALL variables, even those that are not significant, are included in the summary table. This includes lags of y.
-    # Create a DataFrame with the results
-    # Assuming results_dict is the output from your regression_OLS function
-    # Create DataFrame for Out-of-Sample Performance
-    oos_metrics = ['oos_r2', 'oos_mae', 'oos_mse', 'oos_rmse']
-    oos_df = pd.DataFrame({split: {metric: results_dict[f'{split}_{metric}'] for metric in oos_metrics}
-                        for split in data.keys()})
+    ########################################################################################################
 
-    # Create DataFrame for In-Sample Performance
-    # Initialize an empty DataFrame
-    in_sample_df = pd.DataFrame()
+    final_table = PrettyTable()
 
-    for split, model in results_dict.items():
-        if '_summary' in split:
-            # Extract coefficients and p-values
-            coeffs = model.params
-            pvals = model.pvalues
+    # Parse the dictionary and organize the data by metrics and splits
+    nested_data = {}
+    for key, value in results_dict.items():
+        # Split the key into the split number and the metric name
+        split_number, metric = key.split('_oos_')
+        # Remove 'split_' from the split_number string and convert to int
+        split_number = int(split_number.replace('split_', ''))
+        # Populate the nested_data dictionary
+        nested_data.setdefault(metric, {})[f"Sample {split_number}"] = value
+    # Set up the header for the PrettyTable with the appropriate number of splits
+    columns = [""] + [f"Sample {i}" for i in range(1, splits + 1)]
+    final_table.field_names = columns
 
-            # Format p-values as significance levels
-            significance = pvals.apply(lambda x: '***' if x < 0.001 else '**' if x < 0.01 else '*' if x < 0.05 else '')
+    # Add the rows to the PrettyTable for each metric
+# Add the rows to the PrettyTable for each metric including the new start and end dates
+    for metric in ['r2', 'mae', 'mse', 'rmse', 'start_date', 'end_date']:
+        row = [metric.replace('_', ' ').title()]  # Format the metric name nicely
+        # Add the data for each sample or an empty string if no data is available
+        for i in range(1, splits + 1):
+            # Format dates for readability if the metric is a date
+            if 'date' in metric:
+                date_value = nested_data.get(metric, {}).get(f'Sample {i}', '')
+                row.append(date_value.strftime('%Y-%m-%d') if isinstance(date_value, pd.Timestamp) else '')
+            else:
+                row.append(nested_data.get(metric, {}).get(f'Sample {i}', ''))
+        # Add the row to the PrettyTable
+        final_table.add_row(row)
 
-            # Combine coefficients and significance
-            in_sample_data = coeffs.astype(str) + significance
+    ## reduce the number of decimals in the table to 4
+    for i in range(1, splits + 1):
+        final_table.align[f"Sample {i}"] = 'r'
+        final_table.align[""] = 'l'
+        final_table.float_format = '4.4'
 
-            # Add to DataFrame
-            in_sample_df[split] = in_sample_data
 
-    # Export to CSV
-    oos_df.to_csv("out_of_sample_performance.csv")
-    in_sample_df.to_csv("in_sample_performance.csv")
-
-    # Create headers as DataFrames
-    oos_header = pd.DataFrame(["Out-of-Sample Performance"], columns=["Metric"])
-    in_sample_header = pd.DataFrame(["In-Sample Performance"], columns=["Metric"])
-
-    # Combine the DataFrames
-    combined_df = pd.concat([oos_header, oos_df.reset_index(),
-                            in_sample_header, in_sample_df.reset_index()],
-                            axis=0, ignore_index=True)
-
-    # Adjust column names if necessary
-    combined_df.columns = ['Metric'] + [f'Split {i+1}' for i in range(len(data.keys()))]
-
-    return combined_df
+    return final_table
