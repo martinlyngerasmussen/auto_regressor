@@ -17,6 +17,8 @@ from sklearn.model_selection import TimeSeriesSplit
 import numpy as np
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from prettytable import PrettyTable
+from datetime import datetime
+
 
 
 def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
@@ -189,11 +191,21 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         oos_rmse = np.sqrt(oos_mse)  # Fix the variable name to "oos_mse"
         results_dict[f'{split}_oos_rmse'] = oos_rmse
 
-        ## find the min and max date of the test set
-        start_date = min(test_set.index)
-        end_date = max(test_set.index)
-        results_dict[f'{split}_oos_Start'] = start_date
-        results_dict[f'{split}_oos_End'] = end_date
+        ## find the min and max date of the test set, then convert to "dd-mmm-yyyy" format.
+
+        # Find the min and max date of the test set
+        start_date = min(y_test.index)
+        end_date = max(y_test.index)
+
+        # Convert the dates to the desired format
+        results_dict[f'{split}_oos_start_date'] = start_date.strftime("%d/%m/%Y")
+        results_dict[f'{split}_oos_end_date'] = end_date.strftime("%d/%m/%Y")
+
+        # Correct the keys when storing start and end dates in the results_dict
+        start_date_key = f'{split}_oos_start_date'  # Use 'start_date', not just 'start'
+        end_date_key = f'{split}_oos_end_date'  # Use 'end_date', not just 'end'
+        results_dict[start_date_key] = start_date.strftime("%d/%m/%Y")
+        results_dict[end_date_key] = end_date.strftime("%d/%m/%Y")
 
 
     ########################################################################################################
@@ -221,20 +233,15 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         row = [metric.replace('_', ' ').title()]  # Format the metric name nicely
         # Add the data for each sample or an empty string if no data is available
         for i in range(1, splits + 1):
-            # Format dates for readability if the metric is a date
-            if 'date' in metric:
-                date_value = nested_data.get(metric, {}).get(f'Sample {i}', '')
-                row.append(date_value.strftime('%Y-%m-%d') if isinstance(date_value, pd.Timestamp) else '')
-            else:
-                row.append(nested_data.get(metric, {}).get(f'Sample {i}', ''))
+            row.append(nested_data.get(metric, {}).get(f'Sample {i}', ''))
         # Add the row to the PrettyTable
         final_table.add_row(row)
 
-    ## reduce the number of decimals in the table to 4
-    for i in range(1, splits + 1):
-        final_table.align[f"Sample {i}"] = 'r'
-        final_table.align[""] = 'l'
-        final_table.float_format = '4.4'
+        ## reduce the number of decimals in the table to 4
+        for i in range(1, splits + 1):
+            final_table.align[f"Sample {i}"] = 'r'
+            final_table.align[""] = 'l'
+            final_table.float_format = '4.4'
 
 
     return final_table
