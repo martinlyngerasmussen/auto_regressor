@@ -207,7 +207,6 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         results_dict[start_date_key] = start_date.strftime("%d/%m/%Y")
         results_dict[end_date_key] = end_date.strftime("%d/%m/%Y")
 
-
     ########################################################################################################
     #### create a summary table the split-by-split results. Each column is a split, each row is a metric.
     ########################################################################################################
@@ -227,6 +226,14 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     columns = [""] + [f"Sample {i}" for i in range(1, splits + 1)]
     final_table.field_names = columns
 
+    ## set the title of the table to XYZ
+    final_table.title = "Out of sample performance across sub-periods"
+
+    title = "Out of sample performance across sub-periods".upper()  # Uppercase title
+    title = f"*** {title} ***"  # Add symbols for emphasis
+    final_table.title = title
+
+
     # Add the rows to the PrettyTable for each metric
 # Add the rows to the PrettyTable for each metric including the new start and end dates
     for metric in ['r2', 'mae', 'mse', 'rmse', 'start_date', 'end_date']:
@@ -242,6 +249,5 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
             final_table.align[f"Sample {i}"] = 'r'
             final_table.align[""] = 'l'
             final_table.float_format = '4.4'
-
 
     return final_table
