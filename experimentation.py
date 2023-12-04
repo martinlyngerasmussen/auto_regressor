@@ -1,7 +1,5 @@
 
 ##### To do:
-# 1. Format output of regression_OLS function
-# 2. Make sure the dates for each split is clear
 # 3. Save the in-sample and oos results in a csv file across the different splits
 # 4. Visually summarize the results for the different splits
 # 5. Model averaging: what to do? Average (simple or weighted) as well as min, max, median, etc.?
@@ -18,6 +16,8 @@ import numpy as np
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from prettytable import PrettyTable
 from datetime import datetime
+from stargazer.stargazer import Stargazer
+
 
 
 
@@ -171,9 +171,6 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         # Predict the target variable
         y_pred = final_model.predict(X_test)
 
-        ## add to oos_predictions dataframe
-        oos_predictions[f'{split}_y_pred'] = y_pred
-
         ## calculate the following for y_test and y_pred: R2, MAE, MSE, RMSE, MAPE
         # Calculate R2
         oos_r2 = r2_score(y_test, y_pred)
@@ -208,10 +205,10 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         results_dict[end_date_key] = end_date.strftime("%d/%m/%Y")
 
     ########################################################################################################
-    #### create a summary table the split-by-split results. Each column is a split, each row is a metric.
+    #### create a table that summarizes the out-of-sample performance across the different splits       ####
     ########################################################################################################
 
-    final_table = PrettyTable()
+    oos_metrics_table = PrettyTable()
 
     # Parse the dictionary and organize the data by metrics and splits
     nested_data = {}
@@ -224,30 +221,40 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         nested_data.setdefault(metric, {})[f"Sample {split_number}"] = value
     # Set up the header for the PrettyTable with the appropriate number of splits
     columns = [""] + [f"Sample {i}" for i in range(1, splits + 1)]
-    final_table.field_names = columns
+    oos_metrics_table.field_names = columns
 
     ## set the title of the table to XYZ
-    final_table.title = "Out of sample performance across sub-periods"
+    oos_metrics_table.title = "Out of sample performance across sub-periods"
 
     title = "Out of sample performance across sub-periods".upper()  # Uppercase title
     title = f"*** {title} ***"  # Add symbols for emphasis
-    final_table.title = title
+    oos_metrics_table.title = title
 
 
     # Add the rows to the PrettyTable for each metric
-# Add the rows to the PrettyTable for each metric including the new start and end dates
+    # Add the rows to the PrettyTable for each metric including the new start and end dates
     for metric in ['r2', 'mae', 'mse', 'rmse', 'start_date', 'end_date']:
         row = [metric.replace('_', ' ').title()]  # Format the metric name nicely
         # Add the data for each sample or an empty string if no data is available
         for i in range(1, splits + 1):
             row.append(nested_data.get(metric, {}).get(f'Sample {i}', ''))
         # Add the row to the PrettyTable
-        final_table.add_row(row)
+        oos_metrics_table.add_row(row)
 
         ## reduce the number of decimals in the table to 4
         for i in range(1, splits + 1):
-            final_table.align[f"Sample {i}"] = 'r'
-            final_table.align[""] = 'l'
-            final_table.float_format = '4.4'
+            oos_metrics_table.align[f"Sample {i}"] = 'r'
+            oos_metrics_table.align[""] = 'l'
+            oos_metrics_table.float_format = '4.4'
 
-    return final_table
+
+    ############################################################
+    #### save the in-sample and out-of-sample fitted values ####
+    ############################################################
+
+
+
+
+
+
+    return oos_metrics_table, oos_predictions
