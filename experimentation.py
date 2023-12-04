@@ -1,8 +1,14 @@
 
 ##### To do:
-# 3. Save the in-sample and oos results in a csv file across the different splits
-# 4. Visually summarize the results for the different splits
-# 5. Model averaging: what to do? Average (simple or weighted) as well as min, max, median, etc.?
+# 1.  The sample dates for in-sample and out-of-sample predictions are not correct
+#       E.g. test df starts 1m after train df ends, even though there lags. Not certain
+#       if this is because of printing the wrong dates or because there is true look-ahead
+#       bias. Fix this.
+
+# 2. Visually summarize the results for the different splits
+# 3. Model averaging: what to do? Average (simple or weighted) as well as min, max, median, etc.?
+
+
 
 
 # # import libraries
@@ -16,7 +22,7 @@ import numpy as np
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from prettytable import PrettyTable
 from datetime import datetime
-from stargazer.stargazer import Stargazer
+from stargazer.stargazer import Stargazer, LineLocation
 
 
 
@@ -94,6 +100,11 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     oos_predictions = pd.DataFrame()
     oos_predictions["y"] = df.iloc[:, 0]
 
+    model_list = []
+    model_names_stargaze = []
+    model_number = int(1)
+    start_dates = {}
+    end_dates = {}
 
 
     for split in data:
@@ -148,6 +159,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         # results_dict[f'{split}_summary'] = model.summary()
 
         final_model = model
+        model_list.append(final_model)
 
         ## add predictions to oos_predictions dataframe
         oos_predictions[f'{split}_y_fitted'] = final_model.predict(X)
@@ -194,6 +206,9 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         start_date = min(y_test.index)
         end_date = max(y_test.index)
 
+        start_dates[split] = min(X.index)
+        end_dates[split] = max(X.index)
+
         # Convert the dates to the desired format
         results_dict[f'{split}_oos_start_date'] = start_date.strftime("%d/%m/%Y")
         results_dict[f'{split}_oos_end_date'] = end_date.strftime("%d/%m/%Y")
@@ -203,6 +218,8 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         end_date_key = f'{split}_oos_end_date'  # Use 'end_date', not just 'end'
         results_dict[start_date_key] = start_date.strftime("%d/%m/%Y")
         results_dict[end_date_key] = end_date.strftime("%d/%m/%Y")
+
+        model_number += 1
 
     ########################################################################################################
     #### create a table that summarizes the out-of-sample performance across the different splits       ####
@@ -249,12 +266,22 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
 
     ############################################################
-    #### save the in-sample and out-of-sample fitted values ####
+    #### use Stargazer to compare models ####
     ############################################################
 
+    stargazer = Stargazer(model_list)
+    ones_list = [1 for _ in model_list]
 
+    # Initialize an empty list for model_names_stargaze
+    model_names_stargaze = []
 
+    # Iterate over each split
+    model_names_stargaze = []
+    for split in data.keys():
+        start_date = start_dates[split].strftime("%d/%m/%Y")
+        end_date = end_dates[split].strftime("%d/%m/%Y")
+        model_names_stargaze.append(f'{split}: {start_date} to {end_date}')
 
+    stargazer.custom_columns(model_names_stargaze, ones_list)
 
-
-    return oos_metrics_table, oos_predictions
+    return oos_metrics_table, oos_predictions, stargazer
