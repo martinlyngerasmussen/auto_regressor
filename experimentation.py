@@ -1,5 +1,6 @@
 
 ##### To do:
+# 1 cannot apply models estimated on split n to the whole sample. What's the problem?
 # 1.  The sample dates for in-sample and out-of-sample predictions are not correct
 #       E.g. test df starts 1m after train df ends, even though there lags. Not certain
 #       if this is because of printing the wrong dates or because there is true look-ahead
@@ -24,7 +25,13 @@ from prettytable import PrettyTable
 from datetime import datetime
 from stargazer.stargazer import Stargazer, LineLocation
 
-
+def create_lagged_features(df, lags):
+    df_lagged = df.copy()
+    for lag in range(1, lags + 1):
+        for col in df.columns:
+            df_lagged[f'{col}_lag{lag}'] = df[col].shift(lag)
+    df_lagged.dropna(inplace=True)
+    return df_lagged
 
 
 def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
@@ -45,7 +52,7 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
 
     ## create splits of the DataFrame, where splits = splits. Each split is a DataFrame. Name each split as df_split_i.
     # Split the DataFrame and store each split in a dictionary
-    split_dfs = pd.DataFrame()
+    split_dfs = {}
     split_dfs = {f"split_{i+1}": df for i, df in enumerate(np.array_split(df, splits))}
 
     # Creating a dictionary for each split
@@ -100,6 +107,21 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     oos_predictions = pd.DataFrame()
     oos_predictions["y"] = df.iloc[:, 0]
 
+    ####### import the full sample of data
+    ## make X
+    full_sample_X = pd.read_csv(file_location)
+    full_sample_X['date'] = pd.to_datetime(full_sample_X['date'], infer_datetime_format= True).dt.date
+    full_sample_X.set_index('date', inplace=True)
+    full_sample_X = create_lagged_features(full_sample_X, lags)
+
+    ## make y
+    full_sample = pd.read_csv(file_location)
+    full_sample['date'] = pd.to_datetime(full_sample['date'], infer_datetime_format= True).dt.date
+    full_sample.set_index('date', inplace=True)
+    full_sample = full_sample.iloc[:, [0]]
+
+
+    ## empty dataframes to be used during loop
     model_list = []
     model_names_stargaze = []
     model_number = int(1)
@@ -115,6 +137,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         # Separate the target variable and the features
         y = split_df.iloc[:, 0]
         X = split_df.iloc[:, 1:]
+
 
         # Loop until all VIFs are smaller than the cut-off value
         vif_cut_off = 5
@@ -159,8 +182,22 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         # results_dict[f'{split}_summary'] = model.summary()
 
         final_model = model
-        model_list.append(final_model)
+        model_list.append(final_model)  ## add model to list of models used by stargazer
 
+        ########## fit model both in-sample and out-of-sample ##########
+        # Add a constant to the features if necessary
+        if "const" in X.columns and "const" not in full_sample_X.columns:
+            full_sample_X = sm.add_constant(full_sample_X)
+
+
+        full_sample_X = full_sample_X[X.columns.intersection(full_sample_X.columns)] ## exclude columns from full_sample_X that are not in X
+
+
+        # Predict the target variable
+        full_sample[f'{split}_y_fitted'] = final_model.predict(full_sample_X)
+
+
+        ########## collect OOS predictions for each split ##########
         ## add predictions to oos_predictions dataframe
         oos_predictions[f'{split}_y_fitted'] = final_model.predict(X)
 
@@ -174,7 +211,6 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
         ## exclude columns from test_set that are not in train_set
         X_test = X_test[X.columns.intersection(X_test.columns)]
-
 
         # Add a constant to the features
         if "const" in X.columns:
@@ -220,6 +256,12 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         results_dict[end_date_key] = end_date.strftime("%d/%m/%Y")
 
         model_number += 1
+
+
+
+    ######### average the full_sample_fitted y's across splits #################################
+
+
 
     ########################################################################################################
     #### create a table that summarizes the out-of-sample performance across the different splits       ####
@@ -284,4 +326,4 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
     stargazer.custom_columns(model_names_stargaze, ones_list)
 
-    return oos_metrics_table, oos_predictions, stargazer
+    return oos_metrics_table, oos_predictions, stargazer, full_sample
