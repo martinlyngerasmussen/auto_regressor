@@ -186,11 +186,10 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
         ########## fit model both in-sample and out-of-sample ##########
         # Add a constant to the features if necessary
-        if "const" in X.columns and "const" not in full_sample_X.columns:
+        if 'const' in X.columns:
             full_sample_X = sm.add_constant(full_sample_X)
 
-
-        full_sample_X = full_sample_X[X.columns.intersection(full_sample_X.columns)] ## exclude columns from full_sample_X that are not in X
+        full_sample_X = full_sample_X[X.columns]
 
 
         # Predict the target variable
