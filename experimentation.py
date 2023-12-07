@@ -23,7 +23,9 @@ import numpy as np
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from prettytable import PrettyTable
 from datetime import datetime
-from stargazer.stargazer import Stargazer, LineLocation
+from stargazer.stargazer import Stargazer
+import pdb; pdb.set_trace()
+
 
 def create_lagged_features(df, lags):
     df_lagged = df.copy()
@@ -92,8 +94,45 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
 
     return splits_dict
 
+
+
+
+def full_df(file_location, lags = 5):
+    ###### assumes that the variables are stationary, date column is called "date"
+    ###### assumes that the dataset is in a csv file
+    ###### assumes that y is the first column in the dataset
+    ###### assumes that X is the rest of the columns in the dataset
+
+    # Import the dataset
+    dataset = pd.read_csv(file_location)
+
+    ## convert date column to datetime format
+    dataset['date'] = pd.to_datetime(dataset['date'], infer_datetime_format= True).dt.date
+
+    ## make date column the index
+    df = dataset.copy()
+    df.set_index('date', inplace=True)
+
+    original_columns = df.columns
+
+
+    # Create lagged features for each split, excluding the index (date)
+    for lag in range(1, lags + 1):
+        for col in original_columns:
+            df[f'{col}_lag{lag}'] = df[col].shift(lag)
+
+            # Drop the initial rows with NaN values due to lagging
+            df.dropna(inplace=True)
+
+    return df
+
+
+
+
+
 def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     data = data_preparation(file_location, lags, splits, train_share)
+    df_full = full_df(file_location, lags)
 
     ## write a code that loops over each dataframe in the df dictionary
     # Create empty dictionary to store the results
@@ -109,16 +148,10 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
     ####### import the full sample of data
     ## make X
-    full_sample_X = pd.read_csv(file_location)
-    full_sample_X['date'] = pd.to_datetime(full_sample_X['date'], infer_datetime_format= True).dt.date
-    full_sample_X.set_index('date', inplace=True)
-    full_sample_X = create_lagged_features(full_sample_X, lags)
+    full_sample_X = df_full.iloc[:, 1:]
 
     ## make y
-    full_sample = pd.read_csv(file_location)
-    full_sample['date'] = pd.to_datetime(full_sample['date'], infer_datetime_format= True).dt.date
-    full_sample.set_index('date', inplace=True)
-    full_sample = full_sample.iloc[:, [0]]
+    full_sample = df_full.iloc[:, [0]]
 
 
     ## empty dataframes to be used during loop
