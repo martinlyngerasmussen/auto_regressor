@@ -11,6 +11,10 @@
 
 
 ######### TRY WITH MORE REALISTIC DATA SET #########
+######### HOW TO DEAL WITH MODELS WHERE ONLY THE INTERCEPT IS SIGNIFICANT? HOW TO PREVENT FROM MESSING UP PROCEEDING CODE?
+### CHATGPT TIP: After adjusting your feature selection logic, add consistency checks to ensure that X and full_sample_X have an appropriate and matching set of columns before proceeding to model fitting and prediction. #########
+
+
 
 
 # # import libraries
@@ -241,6 +245,8 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         # Add a constant to the features if necessary
         if 'const' in X.columns:
             full_sample_X = sm.add_constant(full_sample_X)
+
+
 
         full_sample_X = full_sample_X[X.columns]
 
