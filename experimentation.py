@@ -10,6 +10,7 @@
 # 3. Model averaging: what to do? Average (simple or weighted) as well as min, max, median, etc.?
 
 
+######### TRY WITH MORE REALISTIC DATA SET #########
 
 
 # # import libraries
@@ -23,17 +24,62 @@ import numpy as np
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from prettytable import PrettyTable
 from datetime import datetime
-from stargazer.stargazer import Stargazer
-import pdb; pdb.set_trace()
+from stargazer.stargazer import Stargazer, LineLocation
 
 
-def create_lagged_features(df, lags):
-    df_lagged = df.copy()
+
+def full_df(file_location, lags = 5):
+    ###### assumes that the variables are stationary, date column is called "date"
+    ###### assumes that the dataset is in a csv file
+    ###### assumes that y is the first column in the dataset
+    ###### assumes that X is the rest of the columns in the dataset
+
+    # Import the dataset
+    dataset = pd.read_csv(file_location)
+
+    ## convert date column to datetime format
+    dataset['date'] = pd.to_datetime(dataset['date'], infer_datetime_format= True).dt.date
+
+    ## make date column the index
+    df = dataset.copy()
+    df.set_index('date', inplace=True)
+
+    # # Assuming 'y' is the first column and should be excluded from VIF calculation
+    # y = df.iloc[:, 0]  # Store 'y' separately
+    # X = df.iloc[:, 1:]  # Consider only the predictor variables for VIF
+
+    # # Loop until all VIFs are smaller than the cut-off value
+    # vif_cut_off = 5
+    # vif_max = 10
+
+    # while vif_max > vif_cut_off:
+    #     # Create a DataFrame with the features and their respective VIFs
+    #     vif = pd.DataFrame()
+    #     vif["VIF Factor"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+    #     vif["features"] = X.columns
+
+    #     # Find the variable with the highest VIF
+    #     vif_max = max(vif["VIF Factor"])
+    #     feature_max_vif = vif[vif["VIF Factor"] == vif_max]["features"].values[0]  # get the actual feature name
+
+    #     # Remove the feature with the highest VIF from X
+    #     X = X.drop(feature_max_vif, axis=1)
+
+    # # Reconstruct the dataframe with 'y' and the reduced set of features
+    # df = pd.concat([y, X], axis=1)
+
+    original_columns = df.columns
+
+    # Create lagged features for each split, excluding the index (date)
     for lag in range(1, lags + 1):
-        for col in df.columns:
-            df_lagged[f'{col}_lag{lag}'] = df[col].shift(lag)
-    df_lagged.dropna(inplace=True)
-    return df_lagged
+        for col in original_columns:
+            df[f'{col}_lag{lag}'] = df[col].shift(lag)
+
+            # Drop the initial rows with NaN values due to lagging
+            df.dropna(inplace=True)
+
+    return df
+
 
 
 def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
@@ -51,6 +97,30 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
     ## make date column the index
     df = dataset.copy()
     df.set_index('date', inplace=True)
+
+    # Assuming 'y' is the first column and should be excluded from VIF calculation
+    y = df.iloc[:, 0]  # Store 'y' separately
+    X = df.iloc[:, 1:]  # Consider only the predictor variables for VIF
+
+    # # Loop until all VIFs are smaller than the cut-off value
+    # vif_cut_off = 5
+    # vif_max = 10
+
+    # while vif_max > vif_cut_off:
+    #     # Create a DataFrame with the features and their respective VIFs
+    #     vif = pd.DataFrame()
+    #     vif["VIF Factor"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+    #     vif["features"] = X.columns
+
+    #     # Find the variable with the highest VIF
+    #     vif_max = max(vif["VIF Factor"])
+    #     feature_max_vif = vif[vif["VIF Factor"] == vif_max]["features"].values[0]  # get the actual feature name
+
+    #     # Remove the feature with the highest VIF from X
+    #     X = X.drop(feature_max_vif, axis=1)
+
+    # Reconstruct the dataframe with 'y' and the reduced set of features
+    df = pd.concat([y, X], axis=1)
 
     ## create splits of the DataFrame, where splits = splits. Each split is a DataFrame. Name each split as df_split_i.
     # Split the DataFrame and store each split in a dictionary
@@ -97,38 +167,6 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
 
 
 
-def full_df(file_location, lags = 5):
-    ###### assumes that the variables are stationary, date column is called "date"
-    ###### assumes that the dataset is in a csv file
-    ###### assumes that y is the first column in the dataset
-    ###### assumes that X is the rest of the columns in the dataset
-
-    # Import the dataset
-    dataset = pd.read_csv(file_location)
-
-    ## convert date column to datetime format
-    dataset['date'] = pd.to_datetime(dataset['date'], infer_datetime_format= True).dt.date
-
-    ## make date column the index
-    df = dataset.copy()
-    df.set_index('date', inplace=True)
-
-    original_columns = df.columns
-
-
-    # Create lagged features for each split, excluding the index (date)
-    for lag in range(1, lags + 1):
-        for col in original_columns:
-            df[f'{col}_lag{lag}'] = df[col].shift(lag)
-
-            # Drop the initial rows with NaN values due to lagging
-            df.dropna(inplace=True)
-
-    return df
-
-
-
-
 
 def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     data = data_preparation(file_location, lags, splits, train_share)
@@ -170,24 +208,6 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         # Separate the target variable and the features
         y = split_df.iloc[:, 0]
         X = split_df.iloc[:, 1:]
-
-
-        # Loop until all VIFs are smaller than the cut-off value
-        vif_cut_off = 5
-        vif_max = 10
-
-        while vif_max > vif_cut_off:
-            # Create a DataFrame with the features and their respective VIFs
-            vif = pd.DataFrame()
-            vif["VIF Factor"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
-            vif["features"] = X.columns
-
-            # Find the variable with the highest VIF
-            vif_max = max(vif["VIF Factor"])
-            feature_max_vif = vif[vif["VIF Factor"] == vif_max]["features"]
-
-            # Remove the feature with the highest VIF
-            X = X.drop(feature_max_vif, axis=1)
 
         # Add a constant to the features
         X = sm.add_constant(X)
