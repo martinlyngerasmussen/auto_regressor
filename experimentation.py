@@ -12,7 +12,10 @@
 
 ######### TRY WITH MORE REALISTIC DATA SET #########
 ######### HOW TO DEAL WITH MODELS WHERE ONLY THE INTERCEPT IS SIGNIFICANT? HOW TO PREVENT FROM MESSING UP PROCEEDING CODE?
-### CHATGPT TIP: After adjusting your feature selection logic, add consistency checks to ensure that X and full_sample_X have an appropriate and matching set of columns before proceeding to model fitting and prediction. #########
+
+### CHATGPT TIP: After adjusting your feature selection logic,
+# add consistency checks to ensure that X and full_sample_X have an appropriate and
+# matching set of columns before proceeding to model fitting and prediction. #########
 
 
 
@@ -48,29 +51,29 @@ def full_df(file_location, lags = 5):
     df = dataset.copy()
     df.set_index('date', inplace=True)
 
-    # # Assuming 'y' is the first column and should be excluded from VIF calculation
-    # y = df.iloc[:, 0]  # Store 'y' separately
-    # X = df.iloc[:, 1:]  # Consider only the predictor variables for VIF
+    # Assuming 'y' is the first column and should be excluded from VIF calculation
+    y = df.iloc[:, 0]  # Store 'y' separately
+    X = df.iloc[:, 1:]  # Consider only the predictor variables for VIF
 
-    # # Loop until all VIFs are smaller than the cut-off value
-    # vif_cut_off = 5
-    # vif_max = 10
+    # Loop until all VIFs are smaller than the cut-off value
+    vif_cut_off = 5
+    vif_max = 10
 
-    # while vif_max > vif_cut_off:
-    #     # Create a DataFrame with the features and their respective VIFs
-    #     vif = pd.DataFrame()
-    #     vif["VIF Factor"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
-    #     vif["features"] = X.columns
+    while vif_max > vif_cut_off:
+        # Create a DataFrame with the features and their respective VIFs
+        vif = pd.DataFrame()
+        vif["VIF Factor"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+        vif["features"] = X.columns
 
-    #     # Find the variable with the highest VIF
-    #     vif_max = max(vif["VIF Factor"])
-    #     feature_max_vif = vif[vif["VIF Factor"] == vif_max]["features"].values[0]  # get the actual feature name
+        # Find the variable with the highest VIF
+        vif_max = max(vif["VIF Factor"])
+        feature_max_vif = vif[vif["VIF Factor"] == vif_max]["features"].values[0]  # get the actual feature name
 
-    #     # Remove the feature with the highest VIF from X
-    #     X = X.drop(feature_max_vif, axis=1)
+        # Remove the feature with the highest VIF from X
+        X = X.drop(feature_max_vif, axis=1)
 
-    # # Reconstruct the dataframe with 'y' and the reduced set of features
-    # df = pd.concat([y, X], axis=1)
+    # Reconstruct the dataframe with 'y' and the reduced set of features
+    df = pd.concat([y, X], axis=1)
 
     original_columns = df.columns
 
@@ -106,22 +109,22 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
     y = df.iloc[:, 0]  # Store 'y' separately
     X = df.iloc[:, 1:]  # Consider only the predictor variables for VIF
 
-    # # Loop until all VIFs are smaller than the cut-off value
-    # vif_cut_off = 5
-    # vif_max = 10
+    # Loop until all VIFs are smaller than the cut-off value
+    vif_cut_off = 5
+    vif_max = 10
 
-    # while vif_max > vif_cut_off:
-    #     # Create a DataFrame with the features and their respective VIFs
-    #     vif = pd.DataFrame()
-    #     vif["VIF Factor"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
-    #     vif["features"] = X.columns
+    while vif_max > vif_cut_off:
+        # Create a DataFrame with the features and their respective VIFs
+        vif = pd.DataFrame()
+        vif["VIF Factor"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+        vif["features"] = X.columns
 
-    #     # Find the variable with the highest VIF
-    #     vif_max = max(vif["VIF Factor"])
-    #     feature_max_vif = vif[vif["VIF Factor"] == vif_max]["features"].values[0]  # get the actual feature name
+        # Find the variable with the highest VIF
+        vif_max = max(vif["VIF Factor"])
+        feature_max_vif = vif[vif["VIF Factor"] == vif_max]["features"].values[0]  # get the actual feature name
 
-    #     # Remove the feature with the highest VIF from X
-    #     X = X.drop(feature_max_vif, axis=1)
+        # Remove the feature with the highest VIF from X
+        X = X.drop(feature_max_vif, axis=1)
 
     # Reconstruct the dataframe with 'y' and the reduced set of features
     df = pd.concat([y, X], axis=1)
@@ -173,20 +176,13 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
 
 
 def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
-    data = data_preparation(file_location, lags, splits, train_share)
+    cv_data = data_preparation(file_location, lags, splits, train_share) ## cv = cross-validation
     df_full = full_df(file_location, lags)
 
     ## write a code that loops over each dataframe in the df dictionary
     # Create empty dictionary to store the results
     results_dict = {}
 
-    ## import only y from the dataset
-    dataset = pd.read_csv(file_location)
-    dataset['date'] = pd.to_datetime(dataset['date'], infer_datetime_format= True).dt.date
-    df = dataset.copy()
-    df.set_index('date', inplace=True)
-    oos_predictions = pd.DataFrame()
-    oos_predictions["y"] = df.iloc[:, 0]
 
     ####### import the full sample of data
     ## make X
@@ -196,6 +192,10 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     full_sample = df_full.iloc[:, [0]]
 
 
+    ## import only y from the dataset
+    oos_predictions = pd.DataFrame()
+    oos_predictions["y"] = df_full.iloc[:, [0]]
+
     ## empty dataframes to be used during loop
     model_list = []
     model_names_stargaze = []
@@ -204,9 +204,9 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     end_dates = {}
 
 
-    for split in data:
+    for split in cv_data:
         ## split is the name of the split (contains all the splits=splits dataframe), split_df is the dataframe (each split contains two split_dfs, and we only want to look at the "train" ones):
-        split_df = data[split][f"{split}_train"]
+        split_df = cv_data[split][f"{split}_train"]
 
         ## fit the OLS model on the split_df
         # Separate the target variable and the features
@@ -261,7 +261,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
         ## predict the values of the test set using the estimated model
         # Store the test set in a new variable
-        test_set = data[split][f"{split}_test"]
+        test_set = cv_data[split][f"{split}_test"]
 
         # Separate the target variable and the features
         y_test = test_set.iloc[:, 0]
