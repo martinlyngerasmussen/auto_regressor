@@ -1,21 +1,13 @@
 
 ##### To do:
-# 1 cannot apply models estimated on split n to the whole sample. What's the problem?
-# 1.  The sample dates for in-sample and out-of-sample predictions are not correct
-#       E.g. test df starts 1m after train df ends, even though there lags. Not certain
-#       if this is because of printing the wrong dates or because there is true look-ahead
-#       bias. Fix this.
+# 1. Visually summarize the results for the different splits
+# 1. Model averaging: what to do? Average (simple or weighted) as well as min, max, median, etc.?
 
-# 2. Visually summarize the results for the different splits
-# 3. Model averaging: what to do? Average (simple or weighted) as well as min, max, median, etc.?
-
-
-######### TRY WITH MORE REALISTIC DATA SET #########
-######### HOW TO DEAL WITH MODELS WHERE ONLY THE INTERCEPT IS SIGNIFICANT? HOW TO PREVENT FROM MESSING UP PROCEEDING CODE?
 
 ### CHATGPT TIP: After adjusting your feature selection logic,
 # add consistency checks to ensure that X and full_sample_X have an appropriate and
 # matching set of columns before proceeding to model fitting and prediction. #########
+
 
 
 
@@ -85,6 +77,7 @@ def full_df(file_location, lags = 5):
             # Drop the initial rows with NaN values due to lagging
             df.dropna(inplace=True)
 
+    df = sm.add_constant(df)
     return df
 
 
@@ -183,7 +176,6 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     # Create empty dictionary to store the results
     results_dict = {}
 
-
     ####### import the full sample of data
     ## make X
     full_sample_X = df_full.iloc[:, 1:]
@@ -191,10 +183,17 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     ## make y
     full_sample = df_full.iloc[:, [0]]
 
-
     ## import only y from the dataset
     oos_predictions = pd.DataFrame()
-    oos_predictions["y"] = df_full.iloc[:, [0]]
+
+    # Get the name of the first column in df_full
+    first_column_name = df_full.columns[0]
+
+    # Use this name to rename the 'y' column in oos_predictions
+    oos_predictions.rename(columns={'y': first_column_name}, inplace=True)
+
+    # Assign the values from the first column of df_full to the newly renamed column
+    oos_predictions[first_column_name] = df_full.iloc[:, 0]
 
     ## empty dataframes to be used during loop
     model_list = []
@@ -207,6 +206,8 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     for split in cv_data:
         ## split is the name of the split (contains all the splits=splits dataframe), split_df is the dataframe (each split contains two split_dfs, and we only want to look at the "train" ones):
         split_df = cv_data[split][f"{split}_train"]
+
+        full_sample_X_loop = full_sample_X.copy()
 
         ## fit the OLS model on the split_df
         # Separate the target variable and the features
@@ -232,6 +233,9 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
             # Remove the feature with the highest p-value
             X = X.drop(feature_max_p, axis=1)
 
+            if len(X.columns) == 0: ## proceed to next split if only constant is left
+                break
+
             # Fit the model without the feature with the highest p-value
             model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
 
@@ -244,15 +248,26 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         ########## fit model both in-sample and out-of-sample ##########
         # Add a constant to the features if necessary
         if 'const' in X.columns:
-            full_sample_X = sm.add_constant(full_sample_X)
+            full_sample_X_loop = sm.add_constant(full_sample_X_loop)
+
+        if 'const' not in X.columns and 'const' in full_sample_X.columns:
+            full_sample_X_loop = full_sample_X_loop.drop('const', axis=1)
+
+        print("#####################")
+        print(f"{split}")
+        print("#####################")
+        print("Full sample columns")
+        print(full_sample_X_loop.columns)
+        print("Split columns")
+        print(X.columns)
 
 
-
-        full_sample_X = full_sample_X[X.columns]
+        # Exclude columns from full_sample_X that are not in X
+        full_sample_X_loop = full_sample_X_loop[X.columns]
 
 
         # Predict the target variable
-        full_sample[f'{split}_y_fitted'] = final_model.predict(full_sample_X)
+        full_sample[f'{split}_y_fitted'] = final_model.predict(full_sample_X_loop)
 
 
         ########## collect OOS predictions for each split ##########
@@ -316,10 +331,14 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         model_number += 1
 
 
+    # remove constant from full_sample
+    full_sample = full_sample.drop('const', axis=1)
 
-    ######### average the full_sample_fitted y's across splits #################################
+    # average the full_sample_fitted y's across splits
+    full_sample['y_fitted_ave'] = full_sample.iloc[:, 1:].mean(axis=1)
 
-
+    ## add back y to full_sample
+    full_sample['y'] = df_full
 
     ########################################################################################################
     #### create a table that summarizes the out-of-sample performance across the different splits       ####
@@ -377,7 +396,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
     # Iterate over each split
     model_names_stargaze = []
-    for split in data.keys():
+    for split in cv_data.keys():
         start_date = start_dates[split].strftime("%d/%m/%Y")
         end_date = end_dates[split].strftime("%d/%m/%Y")
         model_names_stargaze.append(f'{split}: {start_date} to {end_date}')
