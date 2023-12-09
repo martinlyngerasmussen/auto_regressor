@@ -10,9 +10,3 @@ Source: https://www.kaggle.com/code/cworsnup/backtesting-cross-validation-for-ti
 3) Provide a summary of how the different models that have been fitted perform out-of-sample for the given time period. This should provide a quick and easily digestible overview of the models across the different time periods: significant (lags of) variables, summary stats (out of sample: R2, RMSE, etc)
 4) Make the insights actionable: model averaging for optimal prediction. Automatically predict and/or show model-implied value for the latest available data point. 
 
-To do list and thoughts:
-- Work on #3-4
-- Add VAR functionality to #1. Add test to determine whether VAR should be used. 
-- Use heteroskedasticity and autocorrelation consistent standard errors for model selection in #1
-- Turn into a package
-- Update tests 
