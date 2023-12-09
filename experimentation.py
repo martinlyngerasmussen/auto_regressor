@@ -25,8 +25,6 @@ from prettytable import PrettyTable
 from datetime import datetime
 from stargazer.stargazer import Stargazer, LineLocation
 
-
-
 def full_df(file_location, lags = 5):
     ###### assumes that the variables are stationary, date column is called "date"
     ###### assumes that the dataset is in a csv file
@@ -74,12 +72,16 @@ def full_df(file_location, lags = 5):
         for col in original_columns:
             df[f'{col}_lag{lag}'] = df[col].shift(lag)
 
-            # Drop the initial rows with NaN values due to lagging
-            df.dropna(inplace=True)
+            # Drop the initial rows with NaN values due to lagging BUT NOT IF ONLY Y IS missing.
+            # List of all columns except the first one (assumed to be 'y')
+            columns_except_first = df.columns[1:]
+
+            # Drop rows where any of the columns except the first one have NaN values
+            df = df.dropna(subset=columns_except_first)
+
 
     df = sm.add_constant(df)
     return df
-
 
 
 def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
@@ -150,8 +152,8 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
                 for col in original_columns:
                     split_df[f'{col}_lag{lag}'] = split_df[col].shift(lag)
 
-            # Drop the initial rows with NaN values due to lagging
-            split_df.dropna(inplace=True)
+            # Drop if NaN or missing values
+            split_df = split_df.dropna()
 
             # Calculate the split point for train-test division
             split_point = int(len(split_df) * train_share)
@@ -163,9 +165,6 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
             }
 
     return splits_dict
-
-
-
 
 
 def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
@@ -253,15 +252,6 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         if 'const' not in X.columns and 'const' in full_sample_X.columns:
             full_sample_X_loop = full_sample_X_loop.drop('const', axis=1)
 
-        print("#####################")
-        print(f"{split}")
-        print("#####################")
-        print("Full sample columns")
-        print(full_sample_X_loop.columns)
-        print("Split columns")
-        print(X.columns)
-
-
         # Exclude columns from full_sample_X that are not in X
         full_sample_X_loop = full_sample_X_loop[X.columns]
 
@@ -337,8 +327,9 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     # average the full_sample_fitted y's across splits
     full_sample['y_fitted_ave'] = full_sample.iloc[:, 1:].mean(axis=1)
 
-    ## add back y to full_sample
-    full_sample['y'] = df_full
+    ## add back y to full_sample.
+    full_sample['y'] = df_full.iloc[:, 1]
+
 
     ########################################################################################################
     #### create a table that summarizes the out-of-sample performance across the different splits       ####
