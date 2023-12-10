@@ -335,7 +335,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     ################################################
     #### fit model to full dataset, no test set ####
     ################################################
-
+    df_full_reg = full_df(file_location, lags)
     df_full_reg = df_full.copy().reset_index(drop=True)
 
     # Separate the target variable and the features
@@ -343,8 +343,11 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     X_fullsample = df_full_reg.iloc[:, 1:].dropna().reset_index(drop=True)
 
     # Add a constant to the features
-    X_fullsample = sm.add_constant(X_fullsample)
+    X_fullsample = sm.add_constant(X_fullsample).dropna().reset_index(drop=True)
 
+    print(df_full_reg)
+    print(y_fullsample)
+    print(X_fullsample)
 
     # Fit the OLS model
     model = sm.OLS(y_fullsample, X_fullsample).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
