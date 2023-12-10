@@ -4,10 +4,6 @@
 # 1. Model averaging: what to do? Average (simple or weighted) as well as min, max, median, etc.?
 
 
-### CHATGPT TIP: After adjusting your feature selection logic,
-# add consistency checks to ensure that X and full_sample_X have an appropriate and
-# matching set of columns before proceeding to model fitting and prediction. #########
-
 
 
 
@@ -84,7 +80,7 @@ def full_df(file_location, lags = 5):
     return df
 
 
-def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
+def data_preparation_splits(file_location, lags = 5, splits = 5, train_share = 0.8):
     ###### assumes that the variables are stationary, date column is called "date"
     ###### assumes that the dataset is in a csv file
     ###### assumes that y is the first column in the dataset
@@ -123,6 +119,7 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
 
     # Reconstruct the dataframe with 'y' and the reduced set of features
     df = pd.concat([y, X], axis=1)
+    df_full = pd.concat([y, X], axis=1)
 
     ## create splits of the DataFrame, where splits = splits. Each split is a DataFrame. Name each split as df_split_i.
     # Split the DataFrame and store each split in a dictionary
@@ -167,8 +164,10 @@ def data_preparation(file_location, lags = 5, splits = 5, train_share = 0.8):
     return splits_dict
 
 
+
+
 def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
-    cv_data = data_preparation(file_location, lags, splits, train_share) ## cv = cross-validation
+    cv_data = data_preparation_splits(file_location, lags, splits, train_share) ## cv = cross-validation
     df_full = full_df(file_location, lags)
 
     ## write a code that loops over each dataframe in the df dictionary
@@ -201,6 +200,9 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     start_dates = {}
     end_dates = {}
 
+    ###########################################################
+    #### fit models to each split of data in cv_data       ####
+    ###########################################################
 
     for split in cv_data:
         ## split is the name of the split (contains all the splits=splits dataframe), split_df is the dataframe (each split contains two split_dfs, and we only want to look at the "train" ones):
@@ -330,6 +332,68 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     ## add back y to full_sample.
     full_sample['y'] = df_full.iloc[:, 1]
 
+    ################################################
+    #### fit model to full dataset, no test set ####
+    ################################################
+
+    df_full_reg = df_full.copy().reset_index(drop=True)
+
+    # Separate the target variable and the features
+    y_fullsample = df_full_reg.iloc[:, 0].dropna().reset_index(drop=True)
+    X_fullsample = df_full_reg.iloc[:, 1:].dropna().reset_index(drop=True)
+
+    # Add a constant to the features
+    X_fullsample = sm.add_constant(X_fullsample)
+
+
+    # Fit the OLS model
+    model = sm.OLS(y_fullsample, X_fullsample).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
+
+    # Perform backward elimination until all p-values are smaller than the cut-off value
+    # Initialize the loop
+    p_max = 1
+    while p_max > p_cutoff:
+        # Find the variable with the highest p-value
+        p = model.pvalues
+        p_max = max(p)
+        feature_max_p = p.idxmax()
+
+        # Remove the feature with the highest p-value
+        X_fullsample = X_fullsample.drop(feature_max_p, axis=1)
+
+        if len(X_fullsample.columns) == 0: ## proceed to next split if only constant is left
+            break
+
+        # Fit the model without the feature with the highest p-value
+        model = sm.OLS(y_fullsample, X_fullsample).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
+
+    ## store the results of the final model in a dictionary
+    # results_dict[f'{split}_summary'] = model.summary()
+
+    final_model = model
+    model_list.append(final_model)  ## add model to list of models used by stargazer
+
+    ########## fit model both in-sample and out-of-sample ##########
+    # Add a constant to the features if necessary
+    if 'const' in X_fullsample.columns:
+        full_sample_X_loop = sm.add_constant(full_sample_X_loop)
+
+    if 'const' not in X_fullsample.columns and 'const' in full_sample_X.columns:
+        full_sample_X_loop = full_sample_X_loop.drop('const', axis=1)
+
+    # Exclude columns from full_sample_X that are not in X
+    full_sample_X_loop = full_sample_X_loop[X_fullsample.columns]
+
+
+    # Predict the target variable
+    full_sample[f'y_full_fitted'] = final_model.predict(full_sample_X_loop)
+
+
+    ########## collect OOS predictions for each split ##########
+    ## add predictions to oos_predictions dataframe
+    oos_predictions[f'y_full_fitted'] = final_model.predict(X_fullsample)
+
+
 
     ########################################################################################################
     #### create a table that summarizes the out-of-sample performance across the different splits       ####
@@ -393,5 +457,8 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         model_names_stargaze.append(f'{split}: {start_date} to {end_date}')
 
     stargazer.custom_columns(model_names_stargaze, ones_list)
+
+
+
 
     return oos_metrics_table, oos_predictions, stargazer, full_sample
