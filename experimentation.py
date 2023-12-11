@@ -119,7 +119,6 @@ def data_preparation_splits(file_location, lags = 5, splits = 5, train_share = 0
 
     # Reconstruct the dataframe with 'y' and the reduced set of features
     df = pd.concat([y, X], axis=1)
-    df_full = pd.concat([y, X], axis=1)
 
     ## create splits of the DataFrame, where splits = splits. Each split is a DataFrame. Name each split as df_split_i.
     # Split the DataFrame and store each split in a dictionary
@@ -336,21 +335,21 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     #### fit model to full dataset, no test set ####
     ################################################
     df_full_reg = full_df(file_location, lags)
-    df_full_reg = df_full.copy().reset_index(drop=True)
+    df_full_reg = df_full_reg.drop('const', axis=1)
 
     # Separate the target variable and the features
-    y_fullsample = df_full_reg.iloc[:, 0].dropna().reset_index(drop=True)
-    X_fullsample = df_full_reg.iloc[:, 1:].dropna().reset_index(drop=True)
+    y_fullsample = df_full_reg.iloc[:, 0].dropna()
+    X_fullsample = df_full_reg.iloc[:, 1:]
+    X_fullsample_pred = X_fullsample
+
+    ## make sure that there the dates intersect for X_fullsample and y_fullsample.
+    X_fullsample = X_fullsample[X_fullsample.index.isin(y_fullsample.index)]
 
     # Add a constant to the features
-    X_fullsample = sm.add_constant(X_fullsample).dropna().reset_index(drop=True)
-
-    print(df_full_reg)
-    print(y_fullsample)
-    print(X_fullsample)
+    X_fullsample = sm.add_constant(X_fullsample).dropna()
 
     # Fit the OLS model
-    model = sm.OLS(y_fullsample, X_fullsample).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
+    model = sm.OLS(y_fullsample, X_fullsample).fit(cov_type="HAC", cov_kwds={'maxlags': 4})
 
     # Perform backward elimination until all p-values are smaller than the cut-off value
     # Initialize the loop
@@ -377,26 +376,17 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     model_list.append(final_model)  ## add model to list of models used by stargazer
 
     ########## fit model both in-sample and out-of-sample ##########
+    # select the columns in X_fullsample_pred that are also in X_fullsample.
+    X_fullsample_pred = X_fullsample_pred[X_fullsample.columns]
+
     # Add a constant to the features if necessary
     if 'const' in X_fullsample.columns:
-        full_sample_X_loop = sm.add_constant(full_sample_X_loop)
-
-    if 'const' not in X_fullsample.columns and 'const' in full_sample_X.columns:
-        full_sample_X_loop = full_sample_X_loop.drop('const', axis=1)
-
-    # Exclude columns from full_sample_X that are not in X
-    full_sample_X_loop = full_sample_X_loop[X_fullsample.columns]
-
+        X_fullsample_pred = sm.add_constant(X_fullsample_pred)
 
     # Predict the target variable
-    full_sample[f'y_full_fitted'] = final_model.predict(full_sample_X_loop)
 
 
-    ########## collect OOS predictions for each split ##########
-    ## add predictions to oos_predictions dataframe
-    oos_predictions[f'y_full_fitted'] = final_model.predict(X_fullsample)
-
-
+    full_sample[f'y_full_fitted'] = final_model.predict(X_fullsample_pred)
 
     ########################################################################################################
     #### create a table that summarizes the out-of-sample performance across the different splits       ####
@@ -459,6 +449,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
         end_date = end_dates[split].strftime("%d/%m/%Y")
         model_names_stargaze.append(f'{split}: {start_date} to {end_date}')
 
+    model_names_stargaze.append('Full sample')
     stargazer.custom_columns(model_names_stargaze, ones_list)
 
 
