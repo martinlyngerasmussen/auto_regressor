@@ -1,12 +1,13 @@
-This is a project I am working on in my spare time to help automate model selection for economic and financial time series. The idea is to automate the work flow from dataset to final model(s) used to explain or predict.
+This notebook shows how to use auto_regressor.py, a very simple Python function that allows the user to fit an OLS with lagged variables.
 
-The end goal of the project is to fit optimal models automatically based on any given time series data:
-1) Model selection: fit multiple models (OLS and, if selected, VAR) across multiple sub-sets of the data. Insignificant (lags) of variables are removed one-by-one for each sub-set of the data. This leaves one optimal model for each subset of the data.
-2) Time series cross validation: for each sub-set (split) of the data, the model is trained on part of the data (e.g. 80%), and the out-of-sample performance of the fitted model is tested for the remainder of the sample (e.g. 20%). Lags are only added once the data has been split into the different slices and each slice has been divided into train and test datasets (to avoid look-ahead bias).
-![image](https://github.com/martinlyngerasmussen/auto_econometrics/assets/103667557/93e230bc-075b-41a7-ad4b-61e9e0f6b49f)
+**Model Selection:** the function automatically finds the best model available for the specified (lags of) variables. More specifically, for a given set of variables (y and set of X), the code does backward selection: remove the (lag of) variable with the highest p-value, then re-run the model, remove the least significant variable. This process is repeated until the p-values of all (lags of) variables are below the specified threshold (*p_cutoff* default is 0.05).
 
-Source: https://www.kaggle.com/code/cworsnup/backtesting-cross-validation-for-timeseries/notebook
-  
-3) Provide a summary of how the different models that have been fitted perform out-of-sample for the given time period. This should provide a quick and easily digestible overview of the models across the different time periods: significant (lags of) variables, summary stats (out of sample: R2, RMSE, etc)
-4) Make the insights actionable: model averaging for optimal prediction. Automatically predict and/or show model-implied value for the latest available data point. 
+**...across multiple splits of the data:** to ensure that model selection is robust, the model is fit across multiple sub-samples ('splits') of the data. This means that the model is fitted separately for each split. Please note that the data is split before lags are added to avoid look-ahead bias.
 
+Each split is divided into a 'training set', on which the model is fitted as well as a 'test set', on which the model is tested (but not fitted). *train_share* is 0.8 by default.
+
+**The output of the function is the following (in order of output):**
+1. Out-of-sample model performance across splits: R2, MAE, MSE, RMSE, start date and end date
+2. A Pandas dataframe with the out-of-sample values across each split. This allows us to answer: how well does the model perform out-of-sample across different periods?
+3. Model summary for each training split as well as the full sample: coefficients etc.
+4. A Pandas dataframe that contains the model from each split, *fitted to the* **full dataset**. This answers the question: how well does a model fit on 2010-2015 data perform during 2021-2023?

@@ -345,7 +345,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
         model_number += 1
 
-    oos_predictions['y_actual'] = df_full.iloc[:, 0]
+    oos_predictions['y_actual'] = df_full.iloc[:, 1]
 
     # remove constant from full_sample
     full_sample = full_sample.drop('const', axis=1)
@@ -433,9 +433,9 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     oos_metrics_table.field_names = columns
 
     ## set the title of the table to XYZ
-    oos_metrics_table.title = "Out of sample performance across sub-periods"
+    oos_metrics_table.title = "Out of sample performance across each split"
 
-    title = "Out of sample performance across sub-periods".upper()  # Uppercase title
+    title = "Out of sample performance across each split".upper()  # Uppercase title
     title = f"*** {title} ***"  # Add symbols for emphasis
     oos_metrics_table.title = title
 
@@ -484,4 +484,14 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     if 'const' in full_sample.columns:
         full_sample = full_sample.drop('const', axis=1)
 
-    return oos_metrics_table, oos_predictions, stargazer, full_sample
+    # move "y_actual" to the last column of oos_predictions
+    cols = oos_predictions.columns.tolist()
+    cols = cols[1:] + cols[:1]
+    oos_predictions = oos_predictions[cols]
+
+    # move "y" to the last column of full_sample
+    cols = full_sample.columns.tolist()
+    cols = cols[1:] + cols[:1]
+    full_sample = full_sample[cols]
+
+    return stargazer, oos_metrics_table, oos_predictions, full_sample
