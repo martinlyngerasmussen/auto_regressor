@@ -452,7 +452,11 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     model_names_stargaze.append('Full sample')
     stargazer.custom_columns(model_names_stargaze, ones_list)
 
+    # for oss_predictions and full_sample, if 'cons' exists then drop it.
+    if 'const' in oos_predictions.columns:
+        oos_predictions = oos_predictions.drop('const', axis=1)
 
-
+    if 'const' in full_sample.columns:
+        full_sample = full_sample.drop('const', axis=1)
 
     return oos_metrics_table, oos_predictions, stargazer, full_sample
