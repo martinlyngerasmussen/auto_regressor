@@ -1,13 +1,3 @@
-
-##### To do:
-# 1. Visually summarize the results for the different splits
-# 1. Model averaging: what to do? Average (simple or weighted) as well as min, max, median, etc.?
-
-
-
-
-
-
 # # import libraries
 import pandas as pd
 import statsmodels.api as sm
@@ -22,10 +12,16 @@ from datetime import datetime
 from stargazer.stargazer import Stargazer, LineLocation
 
 def full_df(file_location, lags = 5):
-    ###### assumes that the variables are stationary, date column is called "date"
-    ###### assumes that the dataset is in a csv file
-    ###### assumes that y is the first column in the dataset
-    ###### assumes that X is the rest of the columns in the dataset
+    """
+    Constructs a dataframe with lagged features for each split.
+
+    Parameters:
+    - file_location (str): The file location of the dataset.
+    - lags (int): The number of lagged features to create.
+
+    Returns:
+    - df (pd.DataFrame): dataframe with 'y' and the set of features.
+    """
 
     # Import the dataset
     dataset = pd.read_csv(file_location)
@@ -79,12 +75,24 @@ def full_df(file_location, lags = 5):
     df = sm.add_constant(df)
     return df
 
-
 def data_preparation_splits(file_location, lags = 5, splits = 5, train_share = 0.8):
-    ###### assumes that the variables are stationary, date column is called "date"
-    ###### assumes that the dataset is in a csv file
-    ###### assumes that y is the first column in the dataset
-    ###### assumes that X is the rest of the columns in the dataset
+    """
+    Prepare the data for regression analysis by performing the following steps:
+    1. Import the dataset from the specified file location.
+    2. Convert the 'date' column to datetime format and set it as the index.
+    3. Calculate the Variance Inflation Factor (VIF) for each predictor variable and remove variables with VIF greater than the cut-off value.
+    4. Split the DataFrame into multiple splits, where each split is a DataFrame.
+    5. Create lagged variables for each split and divide each split into train and test sets.
+
+    Parameters:
+    - file_location (str): The file location of the dataset.
+    - lags (int): The number of lagged variables to create for each predictor variable (default: 5).
+    - splits (int): The number of splits to create from the DataFrame (default: 5).
+    - train_share (float): The proportion of data to use for training (default: 0.8).
+
+    Returns:
+    - splits_dict (dict): A dictionary containing the splits of the DataFrame, where each split is further divided into train and test sets.
+    """
 
     # Import the dataset
     dataset = pd.read_csv(file_location)
@@ -165,6 +173,22 @@ def data_preparation_splits(file_location, lags = 5, splits = 5, train_share = 0
 
 
 
+def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
+    """
+    Perform Ordinary Least Squares (OLS) regression on a dataset using cross-validation.
+
+    Parameters:
+    - file_location (str): The file path of the dataset.
+    - lags (int): The number of lagged variables to include in the regression.
+    - splits (int): The number of splits for cross-validation.
+    - train_share (float): The proportion of the dataset to use for training.
+    - p_cutoff (float, optional): The p-value cutoff for backward elimination. Defaults to 0.05.
+
+    Returns:
+    - results_dict (dict): A dictionary containing the results of the regression, including out-of-sample performance metrics.
+    """
+    # Function code goes here
+    pass
 def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     cv_data = data_preparation_splits(file_location, lags, splits, train_share) ## cv = cross-validation
     df_full = full_df(file_location, lags)
@@ -321,6 +345,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
         model_number += 1
 
+    oos_predictions['y_actual'] = df_full.iloc[:, 0]
 
     # remove constant from full_sample
     full_sample = full_sample.drop('const', axis=1)
