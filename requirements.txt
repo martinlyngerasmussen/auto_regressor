@@ -1,0 +1,6 @@
+pandas
+statsmodels
+scikit-learn
+numpy
+prettytable
+stargazer

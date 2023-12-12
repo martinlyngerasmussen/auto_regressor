@@ -1,15 +1,12 @@
-# # import libraries
+# import libraries
 import pandas as pd
 import statsmodels.api as sm
-from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
-from sklearn.feature_selection import SequentialFeatureSelector
-from sklearn.model_selection import TimeSeriesSplit
 import numpy as np
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from prettytable import PrettyTable
 from datetime import datetime
-from stargazer.stargazer import Stargazer, LineLocation
+from stargazer.stargazer import Stargazer
 
 def full_df(file_location, lags = 5):
     """
