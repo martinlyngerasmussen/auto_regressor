@@ -1,3 +1,8 @@
+
+## OOS predictions are actuall in-sample. Fix this.
+
+
+
 # import libraries
 import pandas as pd
 import statsmodels.api as sm
@@ -169,7 +174,6 @@ def data_preparation_splits(file_location, lags = 5, splits = 5, train_share = 0
 
 
 
-
 def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     """
     Perform Ordinary Least Squares (OLS) regression on a dataset using cross-validation.
@@ -184,9 +188,6 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     Returns:
     - results_dict (dict): A dictionary containing the results of the regression, including out-of-sample performance metrics.
     """
-    # Function code goes here
-    pass
-def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     cv_data = data_preparation_splits(file_location, lags, splits, train_share) ## cv = cross-validation
     df_full = full_df(file_location, lags)
 
@@ -303,6 +304,8 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
         # Predict the target variable
         y_pred = final_model.predict(X_test)
+        oos_predictions[f'{split}_y_oos'] = final_model.predict(X_test)
+
 
         ## calculate the following for y_test and y_pred: R2, MAE, MSE, RMSE, MAPE
         # Calculate R2
