@@ -1,6 +1,7 @@
 
-## OOS predictions are actuall in-sample. Fix this.
-
+## Start the tutorial with a chart showing a cumulative factor model vs. actual
+## for the last 20% of the data; then show the rest of the code and data as
+## a "further details and exploration" section.
 
 
 # import libraries
