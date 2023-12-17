@@ -91,44 +91,39 @@ def prepare_data_for_splits(df, lags, splits, train_share):
     return splits_dict
 
 def perform_regression_analysis(splits_dict, p_cutoff):
-    """
-    Performs regression analysis on the dataset.
-
-    Parameters:
-    - splits_dict (dict): Dictionary of train-test splits.
-    - p_cutoff (float): p-value cutoff for feature selection.
-
-    Returns:
-    - dict: Dictionary with model results and metrics.
-    """
     results_dict = {}
     for split, data in splits_dict.items():
         train_df, test_df = data['train'], data['test']
-        y_train, X_train = train_df.iloc[:, 0], sm.add_constant(train_df.iloc[:, 1:])
-        model = sm.OLS(y_train, X_train).fit(cov_type="HAC", cov_kwds={'maxlags': 4})
+        y_train, X_train = train_df.iloc[:, 0], train_df.iloc[:, 1:]
+        X_train_const = sm.add_constant(X_train, has_constant='add')
+        model = sm.OLS(y_train, X_train_const).fit(cov_type="HAC", cov_kwds={'maxlags': 4})
+
         # Backward elimination
         while max(model.pvalues) > p_cutoff:
-            X_train = X_train.drop(model.pvalues.idxmax(), axis=1)
-            model = sm.OLS(y_train, X_train).fit(cov_type="HAC", cov_kwds={'maxlags': 4})
+            feature_to_remove = model.pvalues.idxmax()
+            X_train_const = X_train_const.drop(feature_to_remove, axis=1)
+            if len(X_train_const.columns) == 1:  # Stop if only the constant is left
+                break
+            model = sm.OLS(y_train, X_train_const).fit(cov_type="HAC", cov_kwds={'maxlags': 4})
+
         # Store results
         results_dict[split] = {
             'model': model,
-            'metrics': calculate_metrics(model, test_df)
+            'metrics': calculate_metrics(model, test_df, X_train_const.columns)
         }
     return results_dict
 
-def calculate_metrics(model, test_df):
-    """
-    Calculates metrics for the model.
+def calculate_metrics(model, test_df, model_features):
+    y_test = test_df.iloc[:, 0]
 
-    Parameters:
-    - model (statsmodels OLS model): Trained model.
-    - test_df (pd.DataFrame): Test dataset.
+    # Create a DataFrame of zeros with the same structure as X_train_const
+    X_test = test_df.loc[:, test_df.columns.isin(model_features)]
 
-    Returns:
-    - dict: Metrics such as R2, MAE, MSE, RMSE.
-    """
-    y_test, X_test = test_df.iloc[:, 0], sm.add_constant(test_df.iloc[:, 1:])
+    print(X_test.columns)
+    print(model_features)
+    # Fill it with the values from test_df
+    X_test.update(test_df)
+
     y_pred = model.predict(X_test)
     return {
         'R2': r2_score(y_test, y_pred),
@@ -136,6 +131,7 @@ def calculate_metrics(model, test_df):
         'MSE': mean_squared_error(y_test, y_pred),
         'RMSE': np.sqrt(mean_squared_error(y_test, y_pred))
     }
+
 
 def plot_cumulative_model_vs_actual(df, model, last_percent=0.2):
     """
@@ -156,18 +152,3 @@ def plot_cumulative_model_vs_actual(df, model, last_percent=0.2):
     plt.xlabel('Date')
     plt.ylabel('Cumulative Value')
     plt.show()
-
-# Example usage
-file_location = 'path_to_dataset.csv'
-lags = 5
-splits = 5
-train_share = 0.8
-p_cutoff = 0.05
-
-df = import_dataset(file_location)
-if df is not None:
-    df_reduced = calculate_vif_and_reduce_features(df)
-    splits_dict = prepare_data_for_splits(df_reduced, lags, splits, train_share)
-    results = perform_regression_analysis(splits_dict, p_cutoff)
-    plot_cumulative_model_vs_actual(df_reduced, results['split_1']['model'])
-    # Further analysis and exploration can continue from here...
