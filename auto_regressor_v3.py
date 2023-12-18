@@ -17,7 +17,7 @@ from stargazer.stargazer import Stargazer
 
 def load_df(file_location):
     """
-    Constructs a dataframe with lagged features for each split.
+    Constructs a dataframe with data from a csv file and removes colinear features.
 
     Parameters:
     - file_location (str): The file location of the dataset.
@@ -64,27 +64,41 @@ def load_df(file_location):
     return df
 
 
-def create_lags(df, lags = 5):
-    original_columns = df.columns
+
+def create_lags(df, lags=5):
+    """
+    Constructs a dataframe with lagged features for each split.
+
+    Parameters:
+    - df (pd.DataFrame): The dataframe to be lagged.
+    - lags (int): The number of lagged features to create.
+
+    Returns:
+    - df (pd.DataFrame): The lagged dataframe.
+    """
 
     # Create lagged features for each split, excluding the index (date)
+    original_columns = df.columns
+
+
     for lag in range(1, lags + 1):
+        # print which columns are being lagged)
         for col in original_columns:
             df[f'{col}_lag{lag}'] = df[col].shift(lag)
 
-            # Drop the initial rows with NaN values due to lagging BUT NOT IF ONLY Y IS missing.
-            # List of all columns except the first one (assumed to be 'y')
-            columns_except_first = df.columns[1:]
+    # Drop the initial rows with NaN values due to lagging BUT NOT IF ONLY Y IS missing.
+    # List of all columns except the first one (assumed to be 'y')
+    columns_except_first = df.columns[1:]
 
-            # Drop rows where any of the columns except the first one have NaN values
-            df = df.dropna(subset=columns_except_first)
-
-
-    df = sm.add_constant(df)
+    # Drop rows where any of the columns except the first one have NaN values
+    df = df.dropna(subset=columns_except_first)
 
     return df
 
-def create_splits(file_location, lags = 5, splits = 5, train_share = 0.8):
+
+
+
+def create_splits(df, splits = 5, train_share = 0.8, lags = 5):
     """
     Prepare the data for regression analysis by performing the following steps:
     1. Split the DataFrame into multiple splits, where each split is a DataFrame.
@@ -99,7 +113,6 @@ def create_splits(file_location, lags = 5, splits = 5, train_share = 0.8):
     Returns:
     - splits_dict (dict): A dictionary containing the splits of the DataFrame, where each split is further divided into train and test sets.
     """
-    df = load_df(file_location)
     # Reconstruct the dataframe with 'y' and the reduced set of features
 
     ## create splits of the DataFrame, where splits = splits. Each split is a DataFrame. Name each split as df_split_i.
@@ -112,6 +125,9 @@ def create_splits(file_location, lags = 5, splits = 5, train_share = 0.8):
 
     for split in split_dfs:
         # Calculate the split point for 80-20 division
+
+        # print: "printing column of split_dfs[split]"
+
         split_point = int(len(split_dfs[split]) * train_share)
 
         # Create and store the training and test sets in a new dictionary for each split
@@ -119,31 +135,10 @@ def create_splits(file_location, lags = 5, splits = 5, train_share = 0.8):
             f"{split}_train": split_dfs[split].iloc[:split_point],
             f"{split}_test": split_dfs[split].iloc[split_point:]
         }
-
-    ## create lags of the variables in each split, divide each split into train and test sets.
-    for split, split_df in split_dfs.items():
-            # Store the original column names (excluding the date index)
-            original_columns = split_df.columns
-
-            # Create lagged features for each split, excluding the index (date)
-            for lag in range(1, lags + 1):
-                for col in original_columns:
-                    split_df[f'{col}_lag{lag}'] = split_df[col].shift(lag)
-
-            # Drop if NaN or missing values
-            split_df = split_df.dropna()
-
-            # Calculate the split point for train-test division
-            split_point = int(len(split_df) * train_share)
-
-            # Split into training and testing sets
-            splits_dict[split] = {
-                f"{split}_train": split_df.iloc[:split_point],
-                f"{split}_test": split_df.iloc[split_point:]
-            }
+        splits_dict[split][f"{split}_train"] = create_lags(splits_dict[split][f"{split}_train"], lags)
+        splits_dict[split][f"{split}_test"] = create_lags(splits_dict[split][f"{split}_test"], lags)
 
     return splits_dict
-
 
 
 def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
