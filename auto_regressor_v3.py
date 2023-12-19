@@ -1,8 +1,5 @@
 
-## Start the tutorial with a chart showing a cumulative factor model vs. actual
-## for the last 20% of the data; then show the rest of the code and data as
-## a "further details and exploration" section.
-
+## RESUME AT LINE 188
 
 # import libraries
 import pandas as pd
@@ -141,7 +138,7 @@ def create_splits(df, splits = 5, train_share = 0.8, lags = 5):
     return splits_dict
 
 
-def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
+def regression_OLS(df, lags, splits, train_share, p_cutoff = 0.05):
     """
     Perform Ordinary Least Squares (OLS) regression on a dataset using cross-validation.
 
@@ -155,8 +152,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     Returns:
     - results_dict (dict): A dictionary containing the results of the regression, including out-of-sample performance metrics.
     """
-    cv_data = create_splits(file_location, lags, splits, train_share) ## cv = cross-validation
-    df_full = full_df(file_location, lags)
+    df = df.copy()
 
     ## write a code that loops over each dataframe in the df dictionary
     # Create empty dictionary to store the results
@@ -164,22 +160,22 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
     ####### import the full sample of data
     ## make X
-    full_sample_X = df_full.iloc[:, 1:]
+    X = df.iloc[:, 1:]
 
     ## make y
-    full_sample = df_full.iloc[:, [0]]
+    y = df.iloc[:, [0]]
 
     ## import only y from the dataset
     oos_predictions = pd.DataFrame()
 
     # Get the name of the first column in df_full
-    first_column_name = df_full.columns[0]
+    first_column_name = df.columns[0]
 
     # Use this name to rename the 'y' column in oos_predictions
     oos_predictions.rename(columns={'y': first_column_name}, inplace=True)
 
     # Assign the values from the first column of df_full to the newly renamed column
-    oos_predictions[first_column_name] = df_full.iloc[:, 0]
+    oos_predictions[first_column_name] = df.iloc[:, 0]
 
     ## empty dataframes to be used during loop
     model_list = []
@@ -188,129 +184,116 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
     start_dates = {}
     end_dates = {}
 
-    ###########################################################
-    #### fit models to each split of data in cv_data       ####
-    ###########################################################
 
-    for split in cv_data:
-        ## split is the name of the split (contains all the splits=splits dataframe), split_df is the dataframe (each split contains two split_dfs, and we only want to look at the "train" ones):
-        split_df = cv_data[split][f"{split}_train"]
+######### CONTINUE WORKING HERE #########
+     # Add a constant to the features
+    X = sm.add_constant(X)
 
-        full_sample_X_loop = full_sample_X.copy()
+    # Fit the OLS model
+    model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
 
-        ## fit the OLS model on the split_df
-        # Separate the target variable and the features
-        y = split_df.iloc[:, 0]
-        X = split_df.iloc[:, 1:]
 
-        # Add a constant to the features
-        X = sm.add_constant(X)
+    # Perform backward elimination until all p-values are smaller than the cut-off value
+    # Initialize the loop
+    p_max = 1
+    while p_max > p_cutoff:
+        # Find the variable with the highest p-value
+        p = model.pvalues
+        p_max = max(p)
+        feature_max_p = p.idxmax()
 
-        # Fit the OLS model
+        # Remove the feature with the highest p-value
+        X = X.drop(feature_max_p, axis=1)
+
+        if len(X.columns) == 0: ## proceed to next split if only constant is left
+            break
+
+        # Fit the model without the feature with the highest p-value
         model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
 
+    ## store the results of the final model in a dictionary
+    # results_dict[f'{split}_summary'] = model.summary()
 
-        # Perform backward elimination until all p-values are smaller than the cut-off value
-        # Initialize the loop
-        p_max = 1
-        while p_max > p_cutoff:
-            # Find the variable with the highest p-value
-            p = model.pvalues
-            p_max = max(p)
-            feature_max_p = p.idxmax()
+    final_model = model
+    model_list.append(final_model)  ## add model to list of models used by stargazer
 
-            # Remove the feature with the highest p-value
-            X = X.drop(feature_max_p, axis=1)
+    ########## fit model both in-sample and out-of-sample ##########
+    # Add a constant to the features if necessary
+    if 'const' in X.columns:
+        full_sample_X_loop = sm.add_constant(full_sample_X_loop)
 
-            if len(X.columns) == 0: ## proceed to next split if only constant is left
-                break
+    if 'const' not in X.columns and 'const' in full_sample_X.columns:
+        full_sample_X_loop = full_sample_X_loop.drop('const', axis=1)
 
-            # Fit the model without the feature with the highest p-value
-            model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
-
-        ## store the results of the final model in a dictionary
-        # results_dict[f'{split}_summary'] = model.summary()
-
-        final_model = model
-        model_list.append(final_model)  ## add model to list of models used by stargazer
-
-        ########## fit model both in-sample and out-of-sample ##########
-        # Add a constant to the features if necessary
-        if 'const' in X.columns:
-            full_sample_X_loop = sm.add_constant(full_sample_X_loop)
-
-        if 'const' not in X.columns and 'const' in full_sample_X.columns:
-            full_sample_X_loop = full_sample_X_loop.drop('const', axis=1)
-
-        # Exclude columns from full_sample_X that are not in X
-        full_sample_X_loop = full_sample_X_loop[X.columns]
+    # Exclude columns from full_sample_X that are not in X
+    full_sample_X_loop = full_sample_X_loop[X.columns]
 
 
-        # Predict the target variable
-        full_sample[f'{split}_y_fitted'] = final_model.predict(full_sample_X_loop)
+    # Predict the target variable
+    full_sample[f'{split}_y_fitted'] = final_model.predict(full_sample_X_loop)
 
 
-        ########## collect OOS predictions for each split ##########
-        ## add predictions to oos_predictions dataframe
-        oos_predictions[f'{split}_y_fitted'] = final_model.predict(X)
+    ########## collect OOS predictions for each split ##########
+    ## add predictions to oos_predictions dataframe
+    oos_predictions[f'{split}_y_fitted'] = final_model.predict(X)
 
-        ## predict the values of the test set using the estimated model
-        # Store the test set in a new variable
-        test_set = cv_data[split][f"{split}_test"]
+    ## predict the values of the test set using the estimated model
+    # Store the test set in a new variable
+    test_set = cv_data[split][f"{split}_test"]
 
-        # Separate the target variable and the features
-        y_test = test_set.iloc[:, 0]
-        X_test = test_set.iloc[:, 1:]
+    # Separate the target variable and the features
+    y_test = test_set.iloc[:, 0]
+    X_test = test_set.iloc[:, 1:]
 
-        ## exclude columns from test_set that are not in train_set
-        X_test = X_test[X.columns.intersection(X_test.columns)]
+    ## exclude columns from test_set that are not in train_set
+    X_test = X_test[X.columns.intersection(X_test.columns)]
 
-        # Add a constant to the features
-        if "const" in X.columns:
-            X_test = sm.add_constant(X_test)
+    # Add a constant to the features
+    if "const" in X.columns:
+        X_test = sm.add_constant(X_test)
 
-        # Predict the target variable
-        y_pred = final_model.predict(X_test)
-        oos_predictions[f'{split}_y_oos'] = final_model.predict(X_test)
+    # Predict the target variable
+    y_pred = final_model.predict(X_test)
+    oos_predictions[f'{split}_y_oos'] = final_model.predict(X_test)
 
 
-        ## calculate the following for y_test and y_pred: R2, MAE, MSE, RMSE, MAPE
-        # Calculate R2
-        oos_r2 = r2_score(y_test, y_pred)
-        results_dict[f'{split}_oos_r2'] = oos_r2
+    ## calculate the following for y_test and y_pred: R2, MAE, MSE, RMSE, MAPE
+    # Calculate R2
+    oos_r2 = r2_score(y_test, y_pred)
+    results_dict[f'{split}_oos_r2'] = oos_r2
 
-        # Calculate MAE
-        oos_mae = np.mean(np.abs(y_test - y_pred))
-        results_dict[f'{split}_oos_mae'] = oos_mae
+    # Calculate MAE
+    oos_mae = np.mean(np.abs(y_test - y_pred))
+    results_dict[f'{split}_oos_mae'] = oos_mae
 
-        # Calculate MSE
-        oos_mse = np.mean((y_test - y_pred)**2)
-        results_dict[f'{split}_oos_mse'] = oos_mse
+    # Calculate MSE
+    oos_mse = np.mean((y_test - y_pred)**2)
+    results_dict[f'{split}_oos_mse'] = oos_mse
 
-        # Calculate RMSE
-        oos_rmse = np.sqrt(oos_mse)  # Fix the variable name to "oos_mse"
-        results_dict[f'{split}_oos_rmse'] = oos_rmse
+    # Calculate RMSE
+    oos_rmse = np.sqrt(oos_mse)  # Fix the variable name to "oos_mse"
+    results_dict[f'{split}_oos_rmse'] = oos_rmse
 
-        ## find the min and max date of the test set, then convert to "dd-mmm-yyyy" format.
+    ## find the min and max date of the test set, then convert to "dd-mmm-yyyy" format.
 
-        # Find the min and max date of the test set
-        start_date = min(y_test.index)
-        end_date = max(y_test.index)
+    # Find the min and max date of the test set
+    start_date = min(y_test.index)
+    end_date = max(y_test.index)
 
-        start_dates[split] = min(X.index)
-        end_dates[split] = max(X.index)
+    start_dates[split] = min(X.index)
+    end_dates[split] = max(X.index)
 
-        # Convert the dates to the desired format
-        results_dict[f'{split}_oos_start_date'] = start_date.strftime("%d/%m/%Y")
-        results_dict[f'{split}_oos_end_date'] = end_date.strftime("%d/%m/%Y")
+    # Convert the dates to the desired format
+    results_dict[f'{split}_oos_start_date'] = start_date.strftime("%d/%m/%Y")
+    results_dict[f'{split}_oos_end_date'] = end_date.strftime("%d/%m/%Y")
 
-        # Correct the keys when storing start and end dates in the results_dict
-        start_date_key = f'{split}_oos_start_date'  # Use 'start_date', not just 'start'
-        end_date_key = f'{split}_oos_end_date'  # Use 'end_date', not just 'end'
-        results_dict[start_date_key] = start_date.strftime("%d/%m/%Y")
-        results_dict[end_date_key] = end_date.strftime("%d/%m/%Y")
+    # Correct the keys when storing start and end dates in the results_dict
+    start_date_key = f'{split}_oos_start_date'  # Use 'start_date', not just 'start'
+    end_date_key = f'{split}_oos_end_date'  # Use 'end_date', not just 'end'
+    results_dict[start_date_key] = start_date.strftime("%d/%m/%Y")
+    results_dict[end_date_key] = end_date.strftime("%d/%m/%Y")
 
-        model_number += 1
+    model_number += 1
 
     oos_predictions['y_actual'] = df_full.iloc[:, 1]
 
