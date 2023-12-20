@@ -1,5 +1,4 @@
 
-## RESUME AT LINE 188
 
 # import libraries
 import pandas as pd
@@ -18,10 +17,9 @@ def load_df(file_location):
 
     Parameters:
     - file_location (str): The file location of the dataset.
-    - lags (int): The number of lagged features to create.
 
     Returns:
-    - df (pd.DataFrame): dataframe with 'y' and the set of features.
+    - df (pd.DataFrame): The dataframe with colinear features removed.
     """
 
     # Import the dataset
@@ -64,7 +62,7 @@ def load_df(file_location):
 
 def create_lags(df, lags=5):
     """
-    Constructs a dataframe with lagged features for each split.
+    Constructs a dataframe with lagged features.
 
     Parameters:
     - df (pd.DataFrame): The dataframe to be lagged.
@@ -92,17 +90,15 @@ def create_lags(df, lags=5):
 
     return df
 
-
-
-
-def create_splits(df, splits = 5, train_share = 0.8, lags = 5):
+def create_splits(df, lags = 5, splits = 5, train_share = 0.8):
     """
     Prepare the data for regression analysis by performing the following steps:
     1. Split the DataFrame into multiple splits, where each split is a DataFrame.
-    2. Create lagged variables for each split and divide each split into train and test sets.
+    2. Divide each split into a train and test set.
+    3. Create lagged features for the train and test sets of each split.
 
     Parameters:
-    - file_location (str): The file location of the dataset.
+    - df (pd.DataFrame): The dataframe to be split.
     - lags (int): The number of lagged variables to create for each predictor variable (default: 5).
     - splits (int): The number of splits to create from the DataFrame (default: 5).
     - train_share (float): The proportion of data to use for training (default: 0.8).
@@ -110,7 +106,6 @@ def create_splits(df, splits = 5, train_share = 0.8, lags = 5):
     Returns:
     - splits_dict (dict): A dictionary containing the splits of the DataFrame, where each split is further divided into train and test sets.
     """
-    # Reconstruct the dataframe with 'y' and the reduced set of features
 
     ## create splits of the DataFrame, where splits = splits. Each split is a DataFrame. Name each split as df_split_i.
     # Split the DataFrame and store each split in a dictionary
@@ -138,32 +133,55 @@ def create_splits(df, splits = 5, train_share = 0.8, lags = 5):
     return splits_dict
 
 
-def regression_OLS(df, lags, splits, train_share, p_cutoff = 0.05):
+def regression_OLS(df, p_cutoff = 0.05):
     """
-    Perform Ordinary Least Squares (OLS) regression on a dataset using cross-validation.
+    This function performs backward elimination on the dataframe using OLS.
 
     Parameters:
-    - file_location (str): The file path of the dataset.
-    - lags (int): The number of lagged variables to include in the regression.
-    - splits (int): The number of splits for cross-validation.
-    - train_share (float): The proportion of the dataset to use for training.
-    - p_cutoff (float, optional): The p-value cutoff for backward elimination. Defaults to 0.05.
+    - df (pd.DataFrame): The dataframe to be fitted with OLS. y should be in the first column, all columns after that should be features.
+    - p_cutoff (float): The p-value cut-off for backward elimination (default: 0.05).
 
     Returns:
-    - results_dict (dict): A dictionary containing the results of the regression, including out-of-sample performance metrics.
+    - model (statsmodels.regression.linear_model.RegressionResultsWrapper): The fitted model
     """
-    df = df.copy()
 
-    ## write a code that loops over each dataframe in the df dictionary
+
+    df = df.copy()
+    X = df.iloc[:, 1:]
+    X = sm.add_constant(X)
+    y = df.iloc[:, [0]]
+
+    # Fit the OLS model
+    model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
+
+    # Perform backward elimination until all p-values are smaller than the cut-off value
+    # Initialize the loop
+    p_max = 1
+    while p_max > p_cutoff:
+        # Find the variable with the highest p-value
+        p = model.pvalues
+        p_max = max(p)
+        feature_max_p = p.idxmax()
+
+        # Remove the feature with the highest p-value
+        X = X.drop(feature_max_p, axis=1)
+
+        if len(X.columns) == 0: ## proceed to next split if only constant is left
+            break
+
+        # Fit the model without the feature with the highest p-value
+        model = sm.OLS(sy, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
+
+    return model
+
+
+
+    ## store the results of the final model in a dictionary
+    # results_dict[f'{split}_summary'] = model.summary()
+
+
     # Create empty dictionary to store the results
     results_dict = {}
-
-    ####### import the full sample of data
-    ## make X
-    X = df.iloc[:, 1:]
-
-    ## make y
-    y = df.iloc[:, [0]]
 
     ## import only y from the dataset
     oos_predictions = pd.DataFrame()
@@ -184,35 +202,8 @@ def regression_OLS(df, lags, splits, train_share, p_cutoff = 0.05):
     start_dates = {}
     end_dates = {}
 
+    # Add a constant to the features
 
-######### CONTINUE WORKING HERE #########
-     # Add a constant to the features
-    X = sm.add_constant(X)
-
-    # Fit the OLS model
-    model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
-
-
-    # Perform backward elimination until all p-values are smaller than the cut-off value
-    # Initialize the loop
-    p_max = 1
-    while p_max > p_cutoff:
-        # Find the variable with the highest p-value
-        p = model.pvalues
-        p_max = max(p)
-        feature_max_p = p.idxmax()
-
-        # Remove the feature with the highest p-value
-        X = X.drop(feature_max_p, axis=1)
-
-        if len(X.columns) == 0: ## proceed to next split if only constant is left
-            break
-
-        # Fit the model without the feature with the highest p-value
-        model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
-
-    ## store the results of the final model in a dictionary
-    # results_dict[f'{split}_summary'] = model.summary()
 
     final_model = model
     model_list.append(final_model)  ## add model to list of models used by stargazer
