@@ -359,7 +359,7 @@ def regression_OLS(file_location, lags, splits, train_share, p_cutoff = 0.05):
 
     #######################################################
     #### fit model to 80% od full dataset, no test set ####
-    #######################################################
+    ######################################################
     df_full_reg = full_df(file_location, lags)
     df_full_reg = df_full_reg.drop('const', axis=1)
 
