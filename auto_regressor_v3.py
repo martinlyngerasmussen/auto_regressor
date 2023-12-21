@@ -170,10 +170,44 @@ def regression_OLS(df, p_cutoff = 0.05):
             break
 
         # Fit the model without the feature with the highest p-value
-        model = sm.OLS(sy, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
+        model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
 
     return model
 
+
+def predict(df, model):
+    """
+    This function creates a dataframe with the actual and predicted values of y.
+
+    Parameters:
+    - df (pd.DataFrame): The dataframe to be used for prediction. y should be in the first column, all columns after that should be features.
+    - model (statsmodels.regression.linear_model.RegressionResultsWrapper): The fitted model
+
+    Returns:
+    - df_pred (pd.DataFrame): The dataframe with the actual and predicted values of y.
+
+    """
+
+    model = model
+    df = df.copy()
+    X = df.iloc[:, 1:]
+    X = sm.add_constant(X)
+    y = df.iloc[:, [0]]
+
+    # Predict the target variable
+    y_pred = model.predict(X)
+
+    df_pred = pd.DataFrame()
+    df_pred['y_actual'] = y
+    df_pred['y_pred'] = y_pred
+
+    return df_pred
+
+
+
+
+
+    """
 
 
     ## store the results of the final model in a dictionary
