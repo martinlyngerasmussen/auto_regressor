@@ -198,115 +198,58 @@ def predict(df, model):
     y_pred = model.predict(X)
 
     df_pred = pd.DataFrame()
-    df_pred['y_actual'] = y
-    df_pred['y_pred'] = y_pred
+    df_pred[['y_actual']] = y
+    df_pred[['y_pred']] = y_pred
 
     return df_pred
 
 
 
-
-
-    """
-
-
-    ## store the results of the final model in a dictionary
-    # results_dict[f'{split}_summary'] = model.summary()
-
-
-    # Create empty dictionary to store the results
-    results_dict = {}
-
-    ## import only y from the dataset
-    oos_predictions = pd.DataFrame()
-
-    # Get the name of the first column in df_full
-    first_column_name = df.columns[0]
-
-    # Use this name to rename the 'y' column in oos_predictions
-    oos_predictions.rename(columns={'y': first_column_name}, inplace=True)
-
-    # Assign the values from the first column of df_full to the newly renamed column
-    oos_predictions[first_column_name] = df.iloc[:, 0]
-
-    ## empty dataframes to be used during loop
-    model_list = []
-    model_names_stargaze = []
-    model_number = int(1)
-    start_dates = {}
-    end_dates = {}
-
-    # Add a constant to the features
-
-
-    final_model = model
-    model_list.append(final_model)  ## add model to list of models used by stargazer
-
-    ########## fit model both in-sample and out-of-sample ##########
-    # Add a constant to the features if necessary
-    if 'const' in X.columns:
-        full_sample_X_loop = sm.add_constant(full_sample_X_loop)
-
-    if 'const' not in X.columns and 'const' in full_sample_X.columns:
-        full_sample_X_loop = full_sample_X_loop.drop('const', axis=1)
-
-    # Exclude columns from full_sample_X that are not in X
-    full_sample_X_loop = full_sample_X_loop[X.columns]
-
-
-    # Predict the target variable
-    full_sample[f'{split}_y_fitted'] = final_model.predict(full_sample_X_loop)
-
-
-    ########## collect OOS predictions for each split ##########
-    ## add predictions to oos_predictions dataframe
-    oos_predictions[f'{split}_y_fitted'] = final_model.predict(X)
-
-    ## predict the values of the test set using the estimated model
-    # Store the test set in a new variable
-    test_set = cv_data[split][f"{split}_test"]
-
-    # Separate the target variable and the features
-    y_test = test_set.iloc[:, 0]
-    X_test = test_set.iloc[:, 1:]
-
-    ## exclude columns from test_set that are not in train_set
-    X_test = X_test[X.columns.intersection(X_test.columns)]
-
-    # Add a constant to the features
-    if "const" in X.columns:
-        X_test = sm.add_constant(X_test)
-
-    # Predict the target variable
-    y_pred = final_model.predict(X_test)
-    oos_predictions[f'{split}_y_oos'] = final_model.predict(X_test)
-
+def oos_summary_stats(df_pred):
+    y_test = df_pred['y_actual']
+    y_pred = df_pred['y_pred']
 
     ## calculate the following for y_test and y_pred: R2, MAE, MSE, RMSE, MAPE
+    oos_stats = {}
+
     # Calculate R2
-    oos_r2 = r2_score(y_test, y_pred)
-    results_dict[f'{split}_oos_r2'] = oos_r2
+    oos_stats['oos_r2'] = r2_score(y_test, y_pred)
+    oos_stats['oos_mae'] = np.mean(np.abs(y_test - y_pred))
+    oos_stats['oos_mse'] = np.mean((y_test - y_pred)**2)
+    oos_stats['oos_rmse'] = np.sqrt(oos_mse)  # Fix the variable name to "oos_mse"
 
-    # Calculate MAE
-    oos_mae = np.mean(np.abs(y_test - y_pred))
-    results_dict[f'{split}_oos_mae'] = oos_mae
 
-    # Calculate MSE
-    oos_mse = np.mean((y_test - y_pred)**2)
-    results_dict[f'{split}_oos_mse'] = oos_mse
-
-    # Calculate RMSE
-    oos_rmse = np.sqrt(oos_mse)  # Fix the variable name to "oos_mse"
-    results_dict[f'{split}_oos_rmse'] = oos_rmse
-
-    ## find the min and max date of the test set, then convert to "dd-mmm-yyyy" format.
+   ## find the min and max date of the test set, then convert to "dd-mmm-yyyy" format.
 
     # Find the min and max date of the test set
     start_date = min(y_test.index)
     end_date = max(y_test.index)
 
-    start_dates[split] = min(X.index)
-    end_dates[split] = max(X.index)
+    oos_stats['start_date'] = min(df_pred.index).strftime("%d/%m/%Y")
+    oos_stats['end_date'] = max(df_pred.index).strftime("%d/%m/%Y")
+
+    return oos_stats
+
+
+
+
+
+
+
+
+"""""""""""
+
+    results_dict[f'{split}_oos_r2'] = oos_r2
+
+    # Calculate MAE
+    results_dict[f'{split}_oos_mae'] = oos_mae
+
+    # Calculate MSE
+    results_dict[f'{split}_oos_mse'] = oos_mse
+
+    # Calculate RMSE
+    results_dict[f'{split}_oos_rmse'] = oos_rmse
+
 
     # Convert the dates to the desired format
     results_dict[f'{split}_oos_start_date'] = start_date.strftime("%d/%m/%Y")
