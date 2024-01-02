@@ -206,6 +206,22 @@ def predict(df, model):
 
 
 def oos_summary_stats(df_pred):
+    """
+    Calculate out-of-sample summary statistics for a regression model. The idea is that the function is applied to out-of-sample data, though it can technically also be applied to in-sample data.
+
+    Parameters:
+    df_pred (DataFrame): DataFrame containing the actual and predicted values.
+
+    Returns:
+    dict: Dictionary containing the out-of-sample summary statistics.
+        - oos_r2 (float): R-squared value.
+        - oos_mae (float): Mean absolute error.
+        - oos_mse (float): Mean squared error.
+        - oos_rmse (float): Root mean squared error.
+        - start_date (str): Start date of the test set in "dd/mm/yyyy" format.
+        - end_date (str): End date of the test set in "dd/mm/yyyy" format.
+    """
+
     y_test = df_pred['y_actual']
     y_pred = df_pred['y_pred']
 
@@ -215,11 +231,11 @@ def oos_summary_stats(df_pred):
     # Calculate R2
     oos_stats['oos_r2'] = r2_score(y_test, y_pred)
     oos_stats['oos_mae'] = np.mean(np.abs(y_test - y_pred))
-    oos_stats['oos_mse'] = np.mean((y_test - y_pred)**2)
+    oos_mse = np.mean((y_test - y_pred)**2)
+    oos_stats['oos_mse'] = oos_mse
     oos_stats['oos_rmse'] = np.sqrt(oos_mse)  # Fix the variable name to "oos_mse"
 
-
-   ## find the min and max date of the test set, then convert to "dd-mmm-yyyy" format.
+    ## find the min and max date of the test set, then convert to "dd-mmm-yyyy" format.
 
     # Find the min and max date of the test set
     start_date = min(y_test.index)
