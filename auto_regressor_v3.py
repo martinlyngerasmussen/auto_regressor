@@ -247,6 +247,29 @@ def oos_summary_stats(df_pred):
     return oos_stats
 
 
+def compare_fitted_models(models, training_data):
+    ############################################################
+    #### use Stargazer to compare models ####
+    ############################################################
+
+    stargazer = Stargazer(models)
+    ones_list = [1 for _ in models]
+
+    # Initialize an empty list for model_names_stargaze
+    model_names_stargaze = []
+
+    # Iterate over each split
+    model_names_stargaze = []
+    for split in training_data.keys():
+        start_date = training_data[split].strftime("%d/%m/%Y")
+        end_date = training_data[split].strftime("%d/%m/%Y")
+        model_names_stargaze.append(f'{split}: {start_date} to {end_date}')
+
+    model_names_stargaze.append('Full sample')
+    stargazer.custom_columns(model_names_stargaze, ones_list)
+
+    return stargazer
+
 
 
 
@@ -391,25 +414,6 @@ def oos_summary_stats(df_pred):
             oos_metrics_table.float_format = '4.4'
 
 
-    ############################################################
-    #### use Stargazer to compare models ####
-    ############################################################
-
-    stargazer = Stargazer(model_list)
-    ones_list = [1 for _ in model_list]
-
-    # Initialize an empty list for model_names_stargaze
-    model_names_stargaze = []
-
-    # Iterate over each split
-    model_names_stargaze = []
-    for split in cv_data.keys():
-        start_date = start_dates[split].strftime("%d/%m/%Y")
-        end_date = end_dates[split].strftime("%d/%m/%Y")
-        model_names_stargaze.append(f'{split}: {start_date} to {end_date}')
-
-    model_names_stargaze.append('Full sample')
-    stargazer.custom_columns(model_names_stargaze, ones_list)
 
     # for oss_predictions and full_sample, if 'cons' exists then drop it.
     if 'const' in oos_predictions.columns:
