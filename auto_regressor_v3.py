@@ -247,16 +247,35 @@ def oos_summary_stats(df_pred):
     return oos_stats
 
 
-def compare_fitted_models(models, training_data):
-    ############################################################
-    #### use Stargazer to compare models ####
-    ############################################################
+def compare_fitted_models(models_and_data):
+    """
+    Compare the fitted models using Stargazer.
+
+    Parameters:
+    models_and_data: this is a dictionary with the following structure:
+        models_and_data = {'model 1': {'fitted_model': model object,
+                                        'dataset': df used to train model},
+                            'model 2': {'fitted_model': model object,
+                                        'dataset': df used to train model},
+                            etc.
+        }
+
+    Returns:
+    stargazer (Stargazer): The Stargazer object with custom columns set.
+
+    """
+    models_and_data = models_and_data
+    models = []
+    for model in models_and_data.keys():
+        models[model] = models_and_data[model]["fitted_model"]
 
     stargazer = Stargazer(models)
     ones_list = [1 for _ in models]
 
     # Initialize an empty list for model_names_stargaze
     model_names_stargaze = []
+
+#######continue here
 
     # Iterate over each split
     model_names_stargaze = []
