@@ -261,13 +261,15 @@ def compare_fitted_models(models_and_data):
         }
 
     Returns:
-    stargazer (Stargazer): The Stargazer object with custom columns set.
+    a table that compares the models provided in models_and_data.
 
     """
-    models_and_data = models_and_data
+
+    ## loop over models_and_data to extract each fitted_model and attach it to the models list.
+
     models = []
     for model in models_and_data.keys():
-        models[model] = models_and_data[model]["fitted_model"]
+        models.append(models_and_data[model]["fitted_model"])
 
     stargazer = Stargazer(models)
     ones_list = [1 for _ in models]
@@ -275,16 +277,12 @@ def compare_fitted_models(models_and_data):
     # Initialize an empty list for model_names_stargaze
     model_names_stargaze = []
 
-#######continue here
+    ## loop over models_and_data to extract each the start_date and end_date of each dataset and attach it to model_names_stargaze.
+    for model in models_and_data.keys():
+        start_date = models_and_data[model]["dataset"].index[0].strftime("%d/%m/%Y")
+        end_date = models_and_data[model]["dataset"].index[-1].strftime("%d/%m/%Y")
+        model_names_stargaze.append(f'{model}: {start_date} to {end_date}')
 
-    # Iterate over each split
-    model_names_stargaze = []
-    for split in training_data.keys():
-        start_date = training_data[split].strftime("%d/%m/%Y")
-        end_date = training_data[split].strftime("%d/%m/%Y")
-        model_names_stargaze.append(f'{split}: {start_date} to {end_date}')
-
-    model_names_stargaze.append('Full sample')
     stargazer.custom_columns(model_names_stargaze, ones_list)
 
     return stargazer
