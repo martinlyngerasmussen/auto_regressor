@@ -288,6 +288,25 @@ def compare_fitted_models(models_and_data):
     return stargazer
 
 
+def compiler_function(file_location, lags, splits, train_share):
+    """
+    Compile all the previous functions into one
+
+    """
+
+    # Load the dataframe.
+    df = load_df(file_location)
+
+    # Create splits
+    split_dfs = create_splits(df, lags = lags, splits = splits, train_share = train_share)
+
+    # create lags for each split in splits_df.
+    for dfs in splits_df:
+
+
+
+
+
 
 
 
