@@ -290,8 +290,7 @@ def compare_fitted_models(models_and_data):
 
 def compiler_function(file_location, lags, splits, train_share):
     """
-    Compile all the previous functions into one
-
+    Add docs here
     """
 
     # Load the dataframe.
@@ -314,6 +313,14 @@ def compiler_function(file_location, lags, splits, train_share):
     predictions = {}
     for split in split_dfs:
         predictions[split] = predict(split_dfs[split][f"{split}_test"], regression_models[split])
+
+    # do predictions based on the full dataset, then attach the prediction to the dictionary.
+    df_full = df.copy()
+    df_full = create_lags(df_full, lags)
+
+    for split in split_dfs:
+        predictions[f'full_sample_{split}'] = predict(df_full, regression_models[split])
+
 
     # do oos_summary_stats for each prediction in predictions, then attach the summary stats to the dictionary.
     oos_summary_stats_dict = {}
