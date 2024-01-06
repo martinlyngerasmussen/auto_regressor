@@ -300,8 +300,27 @@ def compiler_function(file_location, lags, splits, train_share):
     # Create splits
     split_dfs = create_splits(df, lags = lags, splits = splits, train_share = train_share)
 
-    # create lags for each split in splits_df.
-    for dfs in splits_df:
+    # create lags for each split in split_dfs.
+    for split in split_dfs:
+        split_dfs[split][f"{split}_train"] = create_lags(split_dfs[split][f"{split}_train"], lags)
+        split_dfs[split][f"{split}_test"] = create_lags(split_dfs[split][f"{split}_test"], lags)
+
+    # do regression_OLS for each train set in split_dfs, then attach the model to the dictionary.
+    regression_models = {}
+    for split in split_dfs:
+        regression_models[split] = regression_OLS(split_dfs[split][f"{split}_train"])
+
+    # do prediction for each test set in split_dfs, then attach the prediction to the dictionary.
+    predictions = {}
+    for split in split_dfs:
+        predictions[split] = predict(split_dfs[split][f"{split}_test"], regression_models[split])
+
+    # do oos_summary_stats for each prediction in predictions, then attach the summary stats to the dictionary.
+    oos_summary_stats_dict = {}
+    for split in split_dfs:
+        oos_summary_stats_dict[split] = oos_summary_stats(predictions[split])
+
+    return split_dfs, regression_models, predictions, oos_summary_stats_dict
 
 
 
