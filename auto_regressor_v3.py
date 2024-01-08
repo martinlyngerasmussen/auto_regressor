@@ -23,10 +23,22 @@ def load_df(file_location):
     """
 
     # Import the dataset
-    dataset = pd.read_csv(file_location)
+    ## test if the dataset is csv or excel, then import accordingly.
+    if file_location.endswith('.csv'):
+        dataset = pd.read_csv(file_location)
+    elif file_location.endswith('.xlsx'):
+        dataset = pd.read_excel(file_location)
+    else:
+        print("Warning: file_location is not a csv or excel file.")
 
     ## convert date column to datetime format
-    dataset['date'] = pd.to_datetime(dataset['date'], infer_datetime_format= True).dt.date
+    # check if there is a column named 'date' or 'Date'
+    if 'date' in dataset.columns:
+        dataset['date'] = pd.to_datetime(dataset['date'], infer_datetime_format= True).dt.date
+    elif 'Date' in dataset.columns:
+        dataset['Date'] = pd.to_datetime(dataset['Date'], infer_datetime_format= True).dt.date
+    else:
+        print("Warning: no column named 'date' or 'Date' in dataset. Please change the name of the date column to 'date' or 'Date'.")
 
     ## make date column the index
     df = dataset.copy()
@@ -34,12 +46,15 @@ def load_df(file_location):
 
     # Assuming 'y' is the first column and should be excluded from VIF calculation
     y = df.iloc[:, 0]  # Store 'y' separately
+    print(f'y is set to {y.name}, the first column of the dataset. To change this, please change the first column of the dataset.')
+
     X = df.iloc[:, 1:]  # Consider only the predictor variables for VIF
 
     # Loop until all VIFs are smaller than the cut-off value
     vif_cut_off = 5
     vif_max = 10
 
+    print("Removing colinear features...")
     while vif_max > vif_cut_off:
         # Create a DataFrame with the features and their respective VIFs
         vif = pd.DataFrame()
@@ -52,6 +67,10 @@ def load_df(file_location):
 
         # Remove the feature with the highest VIF from X
         X = X.drop(feature_max_vif, axis=1)
+
+        # print which feature is being dropped
+        print(f"Variable {feature_max_vif} is being dropped due to high multicollinearity.")
+    print("Done removing colinear features.")
 
     # Reconstruct the dataframe with 'y' and the reduced set of features
     df = pd.concat([y, X], axis=1)
@@ -74,7 +93,6 @@ def create_lags(df, lags=5):
 
     # Create lagged features for each split, excluding the index (date)
     original_columns = df.columns
-
 
     for lag in range(1, lags + 1):
         # print which columns are being lagged)
@@ -309,6 +327,24 @@ def compiler_function(file_location, lags, splits, train_share):
     for split in split_dfs:
         regression_models[split] = regression_OLS(split_dfs[split][f"{split}_train"])
 
+    # before doing predictions, subset the test set to only include the columns that are also in the train set.
+    for split in split_dfs:
+        split_dfs[split][f"{split}_test"] = split_dfs[split][f"{split}_test"][split_dfs[split][f"{split}_train"].columns]
+
+        # make sure that 'const' is not in the test set if it is not in the train set.
+        if 'const' in split_dfs[split][f"{split}_train"].columns and 'const' not in split_dfs[split][f"{split}_test"].columns:
+            split_dfs[split][f"{split}_test"] = split_dfs[split][f"{split}_test"].drop('const', axis=1)
+
+        # but if the train set has a constant but the test set doesn't, then add it to the test set
+        elif 'const' in split_dfs[split][f"{split}_test"].columns and 'const' not in split_dfs[split][f"{split}_train"].columns:
+            split_dfs[split][f"{split}_test"] = sm.add_constant(split_dfs[split][f"{split}_test"])
+
+
+    ## test if the shape of the test set is the same as the train set, then print a warning if it is not.
+    for split in split_dfs:
+        if split_dfs[split][f"{split}_test"].shape[1] != split_dfs[split][f"{split}_train"].shape[1]:
+            print(f"Warning: the number of columns in {split}_test is not the same as the number of columns in {split}_train.")
+
     # do prediction for each test set in split_dfs, then attach the prediction to the dictionary.
     predictions = {}
     for split in split_dfs:
@@ -319,7 +355,7 @@ def compiler_function(file_location, lags, splits, train_share):
     df_full = create_lags(df_full, lags)
 
     for split in split_dfs:
-        predictions[f'full_sample_{split}'] = predict(df_full, regression_models[split])
+        predictions[f'full_sample_pred_{split}'] = predict(df_full, regression_models[split])
 
 
     # do oos_summary_stats for each prediction in predictions, then attach the summary stats to the dictionary.
