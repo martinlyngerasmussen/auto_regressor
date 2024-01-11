@@ -21,32 +21,28 @@ def load_df(file_location):
     """
 
     # Import the dataset
-    ## test if the dataset is csv or excel, then import accordingly.
     if file_location.endswith('.csv'):
         dataset = pd.read_csv(file_location)
     elif file_location.endswith('.xlsx'):
         dataset = pd.read_excel(file_location)
     else:
-        print("Warning: file_location is not a csv or excel file.")
+        raise ValueError("Invalid file format. Only csv and excel files are supported.")
 
-    ## convert date column to datetime format
-    # check if there is a column named 'date' or 'Date'
-    if 'date' in dataset.columns:
-        dataset['date'] = pd.to_datetime(dataset['date'], infer_datetime_format= True).dt.date
-    elif 'Date' in dataset.columns:
-        dataset['Date'] = pd.to_datetime(dataset['Date'], infer_datetime_format= True).dt.date
+    # Convert date column to datetime format
+    date_columns = ['date', 'Date']
+    for col in date_columns:
+        if col in dataset.columns:
+            dataset[col] = pd.to_datetime(dataset[col], infer_datetime_format=True).dt.date
+            dataset.set_index(col, inplace=True)
+            break
     else:
-        print("Warning: no column named 'date' or 'Date' in dataset. Please change the name of the date column to 'date' or 'Date'.")
-
-    ## make date column the index
-    df = dataset.copy()
-    df.set_index('date', inplace=True)
+        raise ValueError("No column named 'date' or 'Date' in dataset. Please change the name of the date column to 'date' or 'Date'.")
 
     # Assuming 'y' is the first column and should be excluded from VIF calculation
-    y = df.iloc[:, 0]  # Store 'y' separately
-    print(f'y is set to {y.name}, the first column of the dataset. To change this, please change the first column of the dataset.')
+    y = dataset.iloc[:, 0]  # Store 'y' separately
+    print(f"y is set to {y.name}, the first column of the dataset. To change this, please change the first column of the dataset.")
 
-    X = df.iloc[:, 1:]  # Consider only the predictor variables for VIF
+    X = dataset.iloc[:, 1:]  # Consider only the predictor variables for VIF
 
     # Loop until all VIFs are smaller than the cut-off value
     vif_cut_off = 5
@@ -60,8 +56,8 @@ def load_df(file_location):
         vif["features"] = X.columns
 
         # Find the variable with the highest VIF
-        vif_max = max(vif["VIF Factor"])
-        feature_max_vif = vif[vif["VIF Factor"] == vif_max]["features"].values[0]  # get the actual feature name
+        vif_max = vif["VIF Factor"].max()
+        feature_max_vif = vif.loc[vif["VIF Factor"].idxmax(), "features"]  # get the actual feature name
 
         # Remove the feature with the highest VIF from X
         X = X.drop(feature_max_vif, axis=1)
@@ -106,7 +102,7 @@ def create_lags(df, lags=5):
 
     return df
 
-def create_splits(df, lags = 5, splits = 5, train_share = 0.8):
+def create_splits(df, lags=5, splits=5, train_share=0.8):
     """
     Prepare the data for regression analysis by performing the following steps:
     1. Split the DataFrame into multiple splits, where each split is a DataFrame.
@@ -123,28 +119,31 @@ def create_splits(df, lags = 5, splits = 5, train_share = 0.8):
     - splits_dict (dict): A dictionary containing the splits of the DataFrame, where each split is further divided into train and test sets.
     """
 
-    ## create splits of the DataFrame, where splits = splits. Each split is a DataFrame. Name each split as df_split_i.
-    # Split the DataFrame and store each split in a dictionary
-    split_dfs = {}
-    split_dfs = {f"split_{i+1}": df for i, df in enumerate(np.array_split(df, splits))}
+    # Split the DataFrame into multiple splits
+    split_dfs = np.array_split(df, splits)
 
-    # Creating a dictionary for each split
+    # Create a dictionary to store the splits
     splits_dict = {}
 
-    for split in split_dfs:
-        # Calculate the split point for 80-20 division
+    for i, split_df in enumerate(split_dfs):
+        split_name = f"split_{i+1}"
 
-        # print: "printing column of split_dfs[split]"
+        # Calculate the split point for train-test division
+        split_point = int(len(split_df) * train_share)
 
-        split_point = int(len(split_dfs[split]) * train_share)
+        # Create train and test sets for the split
+        train_df = split_df.iloc[:split_point]
+        test_df = split_df.iloc[split_point:]
 
-        # Create and store the training and test sets in a new dictionary for each split
-        splits_dict[split] = {
-            f"{split}_train": split_dfs[split].iloc[:split_point],
-            f"{split}_test": split_dfs[split].iloc[split_point:]
+        # Create lagged features for train and test sets
+        train_df = create_lags(train_df, lags)
+        test_df = create_lags(test_df, lags)
+
+        # Store the train and test sets in the splits dictionary
+        splits_dict[split_name] = {
+            f"{split_name}_train": train_df,
+            f"{split_name}_test": test_df
         }
-        splits_dict[split][f"{split}_train"] = create_lags(splits_dict[split][f"{split}_train"], lags)
-        splits_dict[split][f"{split}_test"] = create_lags(splits_dict[split][f"{split}_test"], lags)
 
     return splits_dict
 
@@ -218,7 +217,6 @@ def predict(df, model):
     df_pred[['y_pred']] = y_pred
 
     return df_pred
-
 
 
 def oos_summary_stats(df_pred):
@@ -306,8 +304,25 @@ def compare_fitted_models(models_and_data):
 
 def compiler_function(file_location, lags, splits, train_share):
     """
-    Add docs here
+    Compiles and executes a series of steps for econometric analysis.
+
+    Parameters:
+    file_location (str): The file location of the dataset.
+    lags (int): The number of lags to create for each variable.
+    splits (int): The number of splits to create for cross-validation.
+    train_share (float): The proportion of the dataset to use for training.
+
+    Returns:
+    tuple: A tuple containing the following dictionaries:
+        - split_dfs: A dictionary of split datasets.
+        - regression_models: A dictionary of regression models.
+        - predictions: A dictionary of predictions.
+        - oos_summary_stats_dict: A dictionary of out-of-sample summary statistics.
     """
+    # Function code here
+    ...
+def compiler_function(file_location, lags, splits, train_share):
+
 
     # Load the dataframe.
     df = load_df(file_location)
