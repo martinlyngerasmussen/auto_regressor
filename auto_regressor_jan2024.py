@@ -3,11 +3,14 @@ import pandas as pd
 import statsmodels.api as sm
 from sklearn.metrics import r2_score
 import numpy as np
-from statsmodels.stats.outliers_influence import variance_inflation_factor
+from statsmodels.stats.outliers_influence import variance_inflation_factor, reset_ramsey
 from prettytable import PrettyTable
 from datetime import datetime
 from stargazer.stargazer import Stargazer
 
+
+
+##### Add to compiler function: calculate_residuals, diagnostics
 
 def load_df(file_location):
     """
@@ -296,10 +299,27 @@ def compare_fitted_models(models_and_data):
         start_date = models_and_data[model]["dataset"].index[0].strftime("%d/%m/%Y")
         end_date = models_and_data[model]["dataset"].index[-1].strftime("%d/%m/%Y")
         model_names_stargaze.append(f'{model}: {start_date} to {end_date}')
+        model_names_stargaze.append(('RESET test', reset_ramsey(model, degree=3)))
 
     stargazer.custom_columns(model_names_stargaze, ones_list)
 
     return stargazer
+
+
+def calculate_residuals():
+    """
+    Compares residuals in-sample vs. out-of-sample.
+
+    Parameters:
+    df_pred (DataFrame): DataFrame containing the actual and predicted values.
+
+    Returns:
+    dict: Dictionary containing the in-sample and out-of-sample residuals.
+        - in_sample_residuals (DataFrame): In-sample residuals.
+        - oos_residuals (DataFrame): Out-of-sample residuals.
+    """
+
+    pass
 
 
 def compiler_function(file_location, lags, splits, train_share):
@@ -319,10 +339,6 @@ def compiler_function(file_location, lags, splits, train_share):
         - predictions: A dictionary of predictions.
         - oos_summary_stats_dict: A dictionary of out-of-sample summary statistics.
     """
-    # Function code here
-    ...
-def compiler_function(file_location, lags, splits, train_share):
-
 
     # Load the dataframe.
     df = load_df(file_location)
@@ -352,7 +368,6 @@ def compiler_function(file_location, lags, splits, train_share):
         elif 'const' in split_dfs[split][f"{split}_test"].columns and 'const' not in split_dfs[split][f"{split}_train"].columns:
             split_dfs[split][f"{split}_test"] = sm.add_constant(split_dfs[split][f"{split}_test"])
 
-
     ## test if the shape of the test set is the same as the train set, then print a warning if it is not.
     for split in split_dfs:
         if split_dfs[split][f"{split}_test"].shape[1] != split_dfs[split][f"{split}_train"].shape[1]:
@@ -369,7 +384,6 @@ def compiler_function(file_location, lags, splits, train_share):
 
     for split in split_dfs:
         predictions[f'full_sample_pred_{split}'] = predict(df_full, regression_models[split])
-
 
     # do oos_summary_stats for each prediction in predictions, then attach the summary stats to the dictionary.
     oos_summary_stats_dict = {}
