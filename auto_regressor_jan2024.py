@@ -74,34 +74,56 @@ def load_df(file_location):
 
     return df
 
-
-
 def create_lags(df, lags=5):
     """
-    Constructs a dataframe with lagged features.
+    Create lagged features for a dataframe or a dictionary of dataframes.
 
     Parameters:
-    - df (pd.DataFrame): The dataframe to be lagged.
-    - lags (int): The number of lagged features to create.
+    df (pd.DataFrame or dict): The dataframe or dictionary of dataframes to create lagged features for.
+    lags (int): The number of lagged features to create.
 
     Returns:
-    - df (pd.DataFrame): The lagged dataframe.
+    pd.DataFrame or dict: The dataframe or dictionary of dataframes with lagged features created.
     """
 
-    # Create lagged features for each split, excluding the index (date)
-    original_columns = df.columns
+    # test if df is a dataframe or a dictionary of dataframe:
+    if isinstance(df, dict):
+        # for each dataframe in df, and each train and test set in each dataframe, create lags.
+        # Each dataframe in df is a split, and each split has a train and test set.
 
-    for lag in range(1, lags + 1):
-        # print which columns are being lagged)
-        for col in original_columns:
-            df[f'{col}_lag{lag}'] = df[col].shift(lag)
+        for split in df:
+            for dataset in df[split]:
+                # Create lagged features for each split, excluding the index (date)
+                original_columns = df[split][dataset].columns
 
-    # Drop the initial rows with NaN values due to lagging BUT NOT IF ONLY Y IS missing.
-    # List of all columns except the first one (assumed to be 'y')
-    columns_except_first = df.columns[1:]
+                for lag in range(1, lags + 1):
+                    # print which columns are being lagged)
+                    for col in original_columns:
+                        df[split][dataset][f'{col}_lag{lag}'] = df[split][dataset][col].shift(lag)
 
-    # Drop rows where any of the columns except the first one have NaN values
-    df = df.dropna(subset=columns_except_first)
+                # Drop the initial rows with NaN values due to lagging BUT NOT IF ONLY Y IS missing.
+                # List of all columns except the first one (assumed to be 'y')
+                columns_except_first = df[split][dataset].columns[1:]
+
+                # Drop rows where any of the columns except the first one have NaN values
+                df[split][dataset] = df[split][dataset].dropna(subset=columns_except_first)
+
+
+    elif isinstance(df, pd.DataFrame):
+        # Create lagged features for each split, excluding the index (date)
+        original_columns = df.columns
+
+        for lag in range(1, lags + 1):
+            # print which columns are being lagged)
+            for col in original_columns:
+                df[f'{col}_lag{lag}'] = df[col].shift(lag)
+
+        # Drop the initial rows with NaN values due to lagging BUT NOT IF ONLY Y IS missing.
+        # List of all columns except the first one (assumed to be 'y')
+        columns_except_first = df.columns[1:]
+
+        # Drop rows where any of the columns except the first one have NaN values
+        df = df.dropna(subset=columns_except_first)
 
     return df
 
@@ -150,7 +172,6 @@ def create_splits(df, lags=5, splits=5, train_share=0.8):
 
     return splits_dict
 
-
 def regression_OLS(df, p_cutoff = 0.05):
     """
     This function performs backward elimination on the dataframe using OLS.
@@ -192,7 +213,6 @@ def regression_OLS(df, p_cutoff = 0.05):
 
     return model
 
-
 def predict(df, model):
     """
     This function creates a dataframe with the actual and predicted values of y.
@@ -220,7 +240,6 @@ def predict(df, model):
     df_pred[['y_pred']] = y_pred
 
     return df_pred
-
 
 def oos_summary_stats(df_pred):
     """
@@ -263,7 +282,6 @@ def oos_summary_stats(df_pred):
 
     return oos_stats
 
-
 def compare_fitted_models(models_and_data):
     """
     Compare the fitted models using Stargazer.
@@ -305,7 +323,6 @@ def compare_fitted_models(models_and_data):
 
     return stargazer
 
-
 def calculate_residuals():
     """
     Compares residuals in-sample vs. out-of-sample.
@@ -320,7 +337,6 @@ def calculate_residuals():
     """
 
     pass
-
 
 def compiler_function(file_location, lags, splits, train_share):
     """
