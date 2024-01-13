@@ -7,6 +7,7 @@ from statsmodels.stats.outliers_influence import variance_inflation_factor, rese
 from prettytable import PrettyTable
 from datetime import datetime
 from stargazer.stargazer import Stargazer
+import os
 
 
 
@@ -22,6 +23,25 @@ def load_df(file_location):
     Returns:
     - df (pd.DataFrame): The dataframe with colinear features removed.
     """
+    # Check if the file exists
+    if not os.path.exists(file_location):
+        raise FileNotFoundError(f"The file at {file_location} does not exist.")
+
+    # Check if the file is readable
+    if not os.access(file_location, os.R_OK):
+        raise PermissionError(f"The file at {file_location} is not readable.")
+
+    # Import the dataset with try-except to handle potential errors
+    try:
+        if file_location.endswith('.csv'):
+            dataset = pd.read_csv(file_location)
+        elif file_location.endswith('.xlsx'):
+            dataset = pd.read_excel(file_location)
+        else:
+            raise ValueError("Invalid file format. Only csv and excel files are supported.")
+    except Exception as e:
+        raise IOError(f"Error reading file {file_location}: {e}")
+
 
     # Import the dataset
     if file_location.endswith('.csv'):
@@ -49,26 +69,28 @@ def load_df(file_location):
 
     # Loop until all VIFs are smaller than the cut-off value
     vif_cut_off = 5
-    vif_max = 10
 
     print("Removing colinear features...")
-    while vif_max > vif_cut_off:
+    while True:
         # Create a DataFrame with the features and their respective VIFs
         vif = pd.DataFrame()
         vif["VIF Factor"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
         vif["features"] = X.columns
 
         # Find the variable with the highest VIF
-        vif_max = vif["VIF Factor"].max()
-        feature_max_vif = vif.loc[vif["VIF Factor"].idxmax(), "features"]  # get the actual feature name
+        max_vif = vif["VIF Factor"].max()
+
+        if max_vif <= vif_cut_off:
+            break  # Exit the loop if all VIFs are below the threshold
+
+        # Get the feature name with the highest VIF
+        feature_with_max_vif = vif[vif["VIF Factor"] == max_vif]["features"].iloc[0]
 
         # Remove the feature with the highest VIF from X
-        X = X.drop(feature_max_vif, axis=1)
+        X = X.drop(feature_with_max_vif, axis=1)
+        print(f"Variable '{feature_with_max_vif}' is being dropped due to high multicollinearity (VIF = {max_vif}).")
 
-        # print which feature is being dropped
-        print(f"Variable {feature_max_vif} is being dropped due to high multicollinearity.")
     print("Done removing colinear features.")
-
     # Reconstruct the dataframe with 'y' and the reduced set of features
     df = pd.concat([y, X], axis=1)
 
@@ -85,6 +107,8 @@ def create_lags(df, lags=5):
     Returns:
     pd.DataFrame or dict: The dataframe or dictionary of dataframes with lagged features created.
     """
+    if not (isinstance(df, pd.DataFrame) or isinstance(df, dict)):
+        raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
 
     # test if df is a dataframe or a dictionary of dataframe:
     if isinstance(df, dict):
@@ -143,6 +167,12 @@ def create_splits(df, lags=5, splits=5, train_share=0.8):
     Returns:
     - splits_dict (dict): A dictionary containing the splits of the DataFrame, where each split is further divided into train and test sets.
     """
+    if df.empty:
+        raise ValueError("Input DataFrame is empty.")
+
+    if not (0 < train_share < 1):
+        raise ValueError("train_share must be between 0 and 1.")
+
 
     # Split the DataFrame into multiple splits
     split_dfs = np.array_split(df, splits)
@@ -183,6 +213,8 @@ def regression_OLS(df, p_cutoff = 0.05):
     Returns:
     - model (statsmodels.regression.linear_model.RegressionResultsWrapper): The fitted model
     """
+    if df.empty or len(df.columns) < 2:
+        raise ValueError("DataFrame must have at least one target and one feature column.")
 
 
     df = df.copy()
@@ -209,7 +241,11 @@ def regression_OLS(df, p_cutoff = 0.05):
             break
 
         # Fit the model without the feature with the highest p-value
-        model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
+        try:
+            model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
+
+        except Exception as e:
+            raise RuntimeError(f"Error fitting the OLS model: {e}")
 
     return model
 
