@@ -42,15 +42,6 @@ def load_df(file_location):
     except Exception as e:
         raise IOError(f"Error reading file {file_location}: {e}")
 
-
-    # Import the dataset
-    if file_location.endswith('.csv'):
-        dataset = pd.read_csv(file_location)
-    elif file_location.endswith('.xlsx'):
-        dataset = pd.read_excel(file_location)
-    else:
-        raise ValueError("Invalid file format. Only csv and excel files are supported.")
-
     # Convert date column to datetime format
     date_columns = ['date', 'Date']
     for col in date_columns:
