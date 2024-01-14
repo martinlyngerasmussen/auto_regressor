@@ -52,14 +52,32 @@ def load_df(file_location):
     else:
         raise ValueError("No column named 'date' or 'Date' in dataset. Please change the name of the date column to 'date' or 'Date'.")
 
-    # Assuming 'y' is the first column and should be excluded from VIF calculation
+       # Assuming 'y' is the first column and should be excluded from VIF calculation
     y = dataset.iloc[:, 0]  # Store 'y' separately
     print(f"y is set to {y.name}, the first column of the dataset. To change this, please change the first column of the dataset.")
 
-    X = dataset.iloc[:, 1:]  # Consider only the predictor variables for VIF
+    return dataset
+
+def remove_colinear_features(df, vif_threshold=5):
+    """
+    Remove collinear features from a DataFrame based on the Variance Inflation Factor (VIF).
+
+    Parameters:
+    - df (DataFrame): The input DataFrame containing the target variable and predictor variables.
+    - vif_threshold (float): The threshold value for VIF. Features with VIF greater than this threshold will be removed.
+
+    Returns:
+    - df (DataFrame): The modified DataFrame with collinear features removed.
+
+    """
+
+    # Assuming 'y' is the first column and should be excluded from VIF calculation
+    y = df.iloc[:, 0]  # Store 'y' separately
+
+    X = df.iloc[:, 1:]  # Consider only the predictor variables for VIF
 
     # Loop until all VIFs are smaller than the cut-off value
-    vif_cut_off = 5
+    vif_cut_off = vif_threshold
 
     print("Removing colinear features...")
     while True:
@@ -82,6 +100,7 @@ def load_df(file_location):
         print(f"Variable '{feature_with_max_vif}' is being dropped due to high multicollinearity (VIF = {max_vif}).")
 
     print("Done removing colinear features.")
+
     # Reconstruct the dataframe with 'y' and the reduced set of features
     df = pd.concat([y, X], axis=1)
 
