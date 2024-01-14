@@ -8,6 +8,9 @@ from prettytable import PrettyTable
 from datetime import datetime
 from stargazer.stargazer import Stargazer
 import os
+import seaborn as sns
+import matplotlib.pyplot as plt
+from scipy.stats import spearmanr
 
 
 
@@ -42,15 +45,24 @@ def load_df(file_location):
     except Exception as e:
         raise IOError(f"Error reading file {file_location}: {e}")
 
-    # Convert date column to datetime format
-    date_columns = ['date', 'Date']
-    for col in date_columns:
-        if col in dataset.columns:
-            dataset[col] = pd.to_datetime(dataset[col], infer_datetime_format=True).dt.date
-            dataset.set_index(col, inplace=True)
-            break
+    # Check for a datetime column first
+    datetime_columns = [col for col in dataset.columns if pd.api.types.is_datetime64_any_dtype(dataset[col])]
+
+    if len(datetime_columns) > 0:
+        # If there's a datetime column, use the first one found
+        date_column = datetime_columns[0]
+        dataset[date_column] = pd.to_datetime(dataset[date_column], infer_datetime_format=True).dt.date
+        dataset.set_index(date_column, inplace=True)
     else:
-        raise ValueError("No column named 'date' or 'Date' in dataset. Please change the name of the date column to 'date' or 'Date'.")
+        # Fall back to 'date' or 'Date'
+        date_columns = ['date', 'Date']
+        for col in date_columns:
+            if col in dataset.columns:
+                dataset[col] = pd.to_datetime(dataset[col], infer_datetime_format=True).dt.date
+                dataset.set_index(col, inplace=True)
+                break
+        else:
+            raise ValueError("No datetime column or column named 'date' or 'Date' found in dataset.")
 
        # Assuming 'y' is the first column and should be excluded from VIF calculation
     y = dataset.iloc[:, 0]  # Store 'y' separately
@@ -58,7 +70,7 @@ def load_df(file_location):
 
     return dataset
 
-def remove_colinear_features(df, vif_threshold=5):
+def remove_colinear_features(df, vif_threshold=10):
     """
     Remove collinear features from a DataFrame based on the Variance Inflation Factor (VIF).
 
@@ -106,6 +118,37 @@ def remove_colinear_features(df, vif_threshold=5):
 
     return df
 
+
+
+
+def exploratory_analysis(df, target_variable):
+
+    ## create a correlation matrix with scatter plots for each pair of variables.
+    corr_matrix = df.corr()
+    corr_matrix.style.background_gradient(cmap='coolwarm')
+
+    predictor_variables = df.columns.drop(target_variable)
+
+    for predictor in predictor_variables:
+        # Visual inspection using scatter plot
+        sns.scatterplot(x=df[predictor], y=df[target_variable])
+        plt.title(f"Scatter plot of {predictor} vs {target_variable}")
+        plt.show()
+
+        # Statistical test for non-linearity using Spearman's rank correlation
+        correlation, p_value = spearmanr(df[predictor], df[target_variable])
+
+        print(f"Spearman's correlation between {predictor} and {target_variable}: {correlation:.2f}")
+        print(f"P-value: {p_value:.3f}")
+
+        # Determine if transformation might be necessary
+        if p_value < 0.05 and correlation not in [-1, 1]:
+            print(f"Potential non-linear relationship detected for {predictor}. Consider transformation.")
+        else:
+            print(f"No strong evidence of non-linear relationship for {predictor}.")
+        print()
+
+
 def create_lags(df, lags=5):
     """
     Create lagged features for a dataframe or a dictionary of dataframes.
@@ -120,46 +163,24 @@ def create_lags(df, lags=5):
     if not (isinstance(df, pd.DataFrame) or isinstance(df, dict)):
         raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
 
-    # test if df is a dataframe or a dictionary of dataframe:
-    if isinstance(df, dict):
-        # for each dataframe in df, and each train and test set in each dataframe, create lags.
-        # Each dataframe in df is a split, and each split has a train and test set.
+    def create_lags_for_df(dataframe, lags):
+        lagged_df = dataframe.copy()
+        for lag in range(1, lags + 1):
+            shifted = dataframe.shift(lag)
+            shifted.columns = [f'{col}_lag{lag}' for col in dataframe.columns]
+            lagged_df = pd.concat([lagged_df, shifted], axis=1)
+        return lagged_df
 
+    if isinstance(df, dict):
         for split in df:
             for dataset in df[split]:
-                # Create lagged features for each split, excluding the index (date)
-                original_columns = df[split][dataset].columns
-
-                for lag in range(1, lags + 1):
-                    # print which columns are being lagged)
-                    for col in original_columns:
-                        df[split][dataset][f'{col}_lag{lag}'] = df[split][dataset][col].shift(lag)
-
-                # Drop the initial rows with NaN values due to lagging BUT NOT IF ONLY Y IS missing.
-                # List of all columns except the first one (assumed to be 'y')
-                columns_except_first = df[split][dataset].columns[1:]
-
-                # Drop rows where any of the columns except the first one have NaN values
-                df[split][dataset] = df[split][dataset].dropna(subset=columns_except_first)
-
-
-    elif isinstance(df, pd.DataFrame):
-        # Create lagged features for each split, excluding the index (date)
-        original_columns = df.columns
-
-        for lag in range(1, lags + 1):
-            # print which columns are being lagged)
-            for col in original_columns:
-                df[f'{col}_lag{lag}'] = df[col].shift(lag)
-
-        # Drop the initial rows with NaN values due to lagging BUT NOT IF ONLY Y IS missing.
-        # List of all columns except the first one (assumed to be 'y')
-        columns_except_first = df.columns[1:]
-
-        # Drop rows where any of the columns except the first one have NaN values
-        df = df.dropna(subset=columns_except_first)
+                df[split][dataset] = create_lags_for_df(df[split][dataset], lags)
+    else:
+        df = create_lags_for_df(df, lags)
 
     return df
+
+
 
 def create_splits(df, lags=5, splits=5, train_share=0.8):
     """
@@ -177,12 +198,18 @@ def create_splits(df, lags=5, splits=5, train_share=0.8):
     Returns:
     - splits_dict (dict): A dictionary containing the splits of the DataFrame, where each split is further divided into train and test sets.
     """
-    if df.empty:
-        raise ValueError("Input DataFrame is empty.")
+    # Validate input parameters
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("Input df must be a pandas DataFrame.")
 
-    if not (0 < train_share < 1):
-        raise ValueError("train_share must be between 0 and 1.")
+    if not isinstance(splits, int) or splits <= 0:
+        raise ValueError("Parameter 'splits' must be an integer greater than 0.")
 
+    if not isinstance(lags, int) or lags < 0:
+        raise ValueError("Parameter 'lags' must be a non-negative integer.")
+
+    if not isinstance(train_share, float) or not 0 < train_share < 1:
+        raise ValueError("Parameter 'train_share' must be a float between 0 and 1.")
 
     # Split the DataFrame into multiple splits
     split_dfs = np.array_split(df, splits)
