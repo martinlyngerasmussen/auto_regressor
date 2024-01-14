@@ -1,6 +1,8 @@
 # Autoregressor: simple and robust time series model selection
 auto_regressor.py is a very simple Python function that allows the user to fit a parsimonious OLS with lagged variables.
 
+Please note that I am still working on the function; the function is not ready to be used yet. 
+
 The function does the following:
 
 **Removes colinear variables** by removing regressors with high variance inflation factors (VIF).
