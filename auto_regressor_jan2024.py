@@ -12,10 +12,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 
-
-
 ##### Add to compiler function: calculate_residuals, diagnostics
-
 def load_df(file_location):
     """
     Constructs a dataframe with data from a csv file and removes colinear features.
@@ -117,9 +114,6 @@ def remove_colinear_features(df, vif_threshold=10):
     df = pd.concat([y, X], axis=1)
 
     return df
-
-
-
 
 def exploratory_analysis(df, target_variable):
 
@@ -239,80 +233,111 @@ def create_splits(df, lags=5, splits=5, train_share=0.8):
 
     return splits_dict
 
-def regression_OLS(df, p_cutoff = 0.05):
+def regression_OLS(input_df, p_cutoff=0.05):
     """
-    This function performs backward elimination on the dataframe using OLS.
+    Performs backward elimination on the dataframe using OLS. Can handle both a single dataframe and a dictionary of dataframes.
 
     Parameters:
-    - df (pd.DataFrame): The dataframe to be fitted with OLS. y should be in the first column, all columns after that should be features.
+    - input_df (pd.DataFrame or dict): The dataframe or dictionary of dataframes to be fitted with OLS.
     - p_cutoff (float): The p-value cut-off for backward elimination (default: 0.05).
 
     Returns:
-    - model (statsmodels.regression.linear_model.RegressionResultsWrapper): The fitted model
+    - A single model or a dictionary of models.
     """
-    if df.empty or len(df.columns) < 2:
-        raise ValueError("DataFrame must have at least one target and one feature column.")
 
+    # validate that p_cutoff is a float between 0 and 1
+    if not isinstance(p_cutoff, float) or not 0 < p_cutoff < 1:
+        raise ValueError("Parameter 'p_cutoff' must be a float between 0 and 1.")
 
-    df = df.copy()
-    X = df.iloc[:, 1:]
-    X = sm.add_constant(X)
-    y = df.iloc[:, [0]]
+    # raise caution if p_cutoff is above 0.1 or below 0.01:
+    if p_cutoff > 0.1:
+        print("Warning: p_cutoff is above 0.1. This may result in a model with too many features.")
+    elif p_cutoff < 0.01:
+        print("Warning: p_cutoff is below 0.01. This may result in a model with too few features.")
 
-    # Fit the OLS model
-    model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
+    def fit_model(df):
+        # Fit the OLS model
+        df = df.copy()
+        X = df.iloc[:, 1:]
+        X = sm.add_constant(X)
+        y = df.iloc[:, [0]]
 
-    # Perform backward elimination until all p-values are smaller than the cut-off value
-    # Initialize the loop
-    p_max = 1
-    while p_max > p_cutoff:
-        # Find the variable with the highest p-value
-        p = model.pvalues
-        p_max = max(p)
-        feature_max_p = p.idxmax()
+        model = sm.OLS(y, X).fit(cov_type="HAC", cov_kwds={'maxlags': 4})
 
-        # Remove the feature with the highest p-value
-        X = X.drop(feature_max_p, axis=1)
+        # Perform backward elimination
+        p_max = 1
+        while p_max > p_cutoff:
+            p = model.pvalues
+            p_max = max(p)
+            feature_max_p = p.idxmax()
 
-        if len(X.columns) == 0: ## proceed to next split if only constant is left
-            break
+            if p_max > p_cutoff:
+                X = X.drop(feature_max_p, axis=1)
+                if len(X.columns) == 0:
+                    break
+                model = sm.OLS(y, X).fit(cov_type="HAC", cov_kwds={'maxlags': 4})
 
-        # Fit the model without the feature with the highest p-value
-        try:
-            model = sm.OLS(y, X).fit(cov_type = "HAC", cov_kwds={'maxlags': 4})
+        return model
 
-        except Exception as e:
-            raise RuntimeError(f"Error fitting the OLS model: {e}")
+    if isinstance(input_df, pd.DataFrame):
+        return fit_model(input_df)
 
-    return model
+    elif isinstance(input_df, dict):
+        models = {}
+        for split, data in input_df.items():
+            if 'train' in data:
+                model_name = f"{split}_model"
+                models[model_name] = fit_model(data['train'])
+            else:
+                raise ValueError(f"No 'train' dataset found in {split}.")
+        return models
 
-def predict(df, model):
+    else:
+        raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
+
+def predict(data, models):
     """
-    This function creates a dataframe with the actual and predicted values of y.
+    Creates a dataframe or dictionary of dataframes with the actual and predicted values of y.
 
     Parameters:
-    - df (pd.DataFrame): The dataframe to be used for prediction. y should be in the first column, all columns after that should be features.
-    - model (statsmodels.regression.linear_model.RegressionResultsWrapper): The fitted model
+    - data (pd.DataFrame or dict): The dataframe or dictionary of dataframes to be used for prediction.
+    - models (statsmodels.regression.linear_model.RegressionResultsWrapper or dict): The fitted model(s).
 
     Returns:
-    - df_pred (pd.DataFrame): The dataframe with the actual and predicted values of y.
-
+    - A dataframe or dictionary of dataframes with the actual and predicted values of y.
     """
 
-    model = model
-    df = df.copy()
-    X = df.iloc[:, 1:]
-    X = sm.add_constant(X)
-    y = df.iloc[:, [0]]
+    def make_prediction(df, model):
+        df = df.copy()
+        X = df.iloc[:, 1:]
+        X = sm.add_constant(X)
+        y = df.iloc[:, [0]]
 
-    # Predict the target variable
-    y_pred = model.predict(X)
+        # Predict the target variable
+        y_pred = model.predict(X)
 
-    df_pred = pd.DataFrame()
-    df_pred[['y_actual']] = y
-    df_pred[['y_pred']] = y_pred
+        df_pred = pd.DataFrame()
+        df_pred[['y_actual']] = y
+        df_pred[['y_pred']] = y_pred
 
-    return df_pred
+        return df_pred
+
+    if isinstance(data, pd.DataFrame) and not isinstance(models, dict):
+        return make_prediction(data, models)
+
+    elif isinstance(data, dict) and isinstance(models, dict):
+        predictions = {}
+        for split, model in models.items():
+            split_key = split.replace('_model', '')  # Get the original split key
+            if 'test' in data[split_key]:
+                predictions[split] = make_prediction(data[split_key]['test'], model)
+            else:
+                raise ValueError(f"No 'test' dataset found in {split_key}.")
+        return predictions
+
+    else:
+        raise TypeError("Data and models must be either both pandas DataFrames or both dictionaries.")
+
 
 def oos_summary_stats(df_pred):
     """
