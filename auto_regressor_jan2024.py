@@ -116,7 +116,6 @@ def remove_colinear_features(df, vif_threshold=10):
     return df
 
 def exploratory_analysis(df, target_variable):
-
     ## create a correlation matrix with scatter plots for each pair of variables.
     corr_matrix = df.corr()
     corr_matrix.style.background_gradient(cmap='coolwarm')
@@ -170,7 +169,15 @@ def create_lags(df, lags=5):
             for dataset in df[split]:
                 df[split][dataset] = create_lags_for_df(df[split][dataset], lags)
     else:
-        df = create_lags_for_df(df, lags)
+        if isinstance(df, dict):
+            print("Please create splits before creating lags to avoid data leakage.")
+        # ask user if they want to create lags for the full dataset. Only proceed if user says yes. If no, stop the function.
+        elif input("Do you want to create lags for the full dataset? (y/n) ") == 'y':
+            print("Creating lags for the full dataset...")
+            df = create_lags_for_df(df, lags)
+            print("Done creating lags for the full dataset.")
+        else:
+            print("No lags were created.")
 
     return df
 
@@ -235,14 +242,20 @@ def create_splits(df, lags=5, splits=5, train_share=0.8):
 
 def regression_OLS(input_df, p_cutoff=0.05):
     """
-    Performs backward elimination on the dataframe using OLS. Can handle both a single dataframe and a dictionary of dataframes.
+    Perform Ordinary Least Squares (OLS) regression with backward elimination.
 
     Parameters:
-    - input_df (pd.DataFrame or dict): The dataframe or dictionary of dataframes to be fitted with OLS.
-    - p_cutoff (float): The p-value cut-off for backward elimination (default: 0.05).
+    - input_df (pandas DataFrame or dict): The input data for regression. If a DataFrame is provided, a single model is fitted.
+      If a dictionary of DataFrames is provided, multiple models are fitted for each split in the dictionary.
+    - p_cutoff (float, optional): The p-value cutoff for feature elimination. Default is 0.05.
 
     Returns:
-    - A single model or a dictionary of models.
+    - model (statsmodels.regression.linear_model.RegressionResultsWrapper or dict): The fitted OLS model(s).
+
+    Raises:
+    - ValueError: If p_cutoff is not a float between 0 and 1.
+    - TypeError: If input_df is not a pandas DataFrame or a dictionary of DataFrames.
+    - ValueError: If 'train' dataset is not found in any split of the input_df dictionary.
     """
 
     # validate that p_cutoff is a float between 0 and 1
@@ -339,46 +352,52 @@ def predict(data, models):
         raise TypeError("Data and models must be either both pandas DataFrames or both dictionaries.")
 
 
-def oos_summary_stats(df_pred):
+def oos_summary_stats(data):
     """
-    Calculate out-of-sample summary statistics for a regression model. The idea is that the function is applied to out-of-sample data, though it can technically also be applied to in-sample data.
+    Calculate out-of-sample summary statistics for a regression model.
 
     Parameters:
-    df_pred (DataFrame): DataFrame containing the actual and predicted values.
+    data (DataFrame or dict): DataFrame containing the actual and predicted values,
+    or a dictionary of DataFrames with actual and predicted values.
 
     Returns:
     dict: Dictionary containing the out-of-sample summary statistics.
-        - oos_r2 (float): R-squared value.
-        - oos_mae (float): Mean absolute error.
-        - oos_mse (float): Mean squared error.
-        - oos_rmse (float): Root mean squared error.
-        - start_date (str): Start date of the test set in "dd/mm/yyyy" format.
-        - end_date (str): End date of the test set in "dd/mm/yyyy" format.
     """
+    import numpy as np
+    from sklearn.metrics import r2_score
 
-    y_test = df_pred['y_actual']
-    y_pred = df_pred['y_pred']
+    def calculate_stats(df_pred):
+        y_test = df_pred['y_actual']
+        y_pred = df_pred['y_pred']
 
-    ## calculate the following for y_test and y_pred: R2, MAE, MSE, RMSE, MAPE
-    oos_stats = {}
+        # Calculate statistics
+        oos_stats = {
+            'oos_r2': r2_score(y_test, y_pred),
+            'oos_mae': np.mean(np.abs(y_test - y_pred)),
+            'oos_mse': np.mean((y_test - y_pred) ** 2)
+        }
+        oos_stats['oos_rmse'] = np.sqrt(oos_stats['oos_mse'])
 
-    # Calculate R2
-    oos_stats['oos_r2'] = r2_score(y_test, y_pred)
-    oos_stats['oos_mae'] = np.mean(np.abs(y_test - y_pred))
-    oos_mse = np.mean((y_test - y_pred)**2)
-    oos_stats['oos_mse'] = oos_mse
-    oos_stats['oos_rmse'] = np.sqrt(oos_mse)  # Fix the variable name to "oos_mse"
+        # Find the min and max date of the test set
+        oos_stats['start_date'] = df_pred.index.min().strftime("%d/%m/%Y")
+        oos_stats['end_date'] = df_pred.index.max().strftime("%d/%m/%Y")
 
-    ## find the min and max date of the test set, then convert to "dd-mmm-yyyy" format.
+        return oos_stats
 
-    # Find the min and max date of the test set
-    start_date = min(y_test.index)
-    end_date = max(y_test.index)
+    if isinstance(data, pd.DataFrame):
+        return calculate_stats(data)
+    elif isinstance(data, dict):
+        results = {}
+        for split_name, split_data in data.items():
+            test_df_key = f"{split_name}_test"
+            if test_df_key in split_data:
+                results[split_name] = calculate_stats(split_data[test_df_key])
+            else:
+                raise KeyError(f"'{test_df_key}' not found in '{split_name}'.")
+        return results
+    else:
+        raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
 
-    oos_stats['start_date'] = min(df_pred.index).strftime("%d/%m/%Y")
-    oos_stats['end_date'] = max(df_pred.index).strftime("%d/%m/%Y")
-
-    return oos_stats
 
 def compare_fitted_models(models_and_data):
     """
