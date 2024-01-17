@@ -14,6 +14,11 @@ from scipy.stats import spearmanr
 
 ##### Add to compiler function: calculate_residuals, diagnostics
 
+## To do: create a way to match each model and dataset its been trained on. Perhaps create a unique ID?
+#### E.g. XYZID_train: train XYZ ID, XYZID_test: train XYZ ID, XYZID_model: model XYZ ID
+#### This needs to be used to make sure that the 'correct' dfs (including split lengths, lags etc) are
+#### matched to the correct model.
+
 def load_df(file_location):
     """
     Constructs a dataframe with data from a csv file and removes colinear features.
@@ -309,7 +314,7 @@ def regression_OLS(input_df, p_cutoff=0.05):
     else:
         raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
 
-def predict(data, models):
+def fit_and_predict(data, models):
     """
     Creates a dataframe or dictionary of dataframes with the actual and predicted values of y.
 
@@ -400,6 +405,7 @@ def oos_summary_stats(data):
         raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
 
 
+########## Work more on compare_fitted_models.
 def compare_fitted_models(models_and_data):
     """
     Compare the fitted models using Stargazer.
@@ -442,19 +448,13 @@ def compare_fitted_models(models_and_data):
     return stargazer
 
 def calculate_residuals():
-    """
-    Compares residuals in-sample vs. out-of-sample.
 
-    Parameters:
-    df_pred (DataFrame): DataFrame containing the actual and predicted values.
+    ## Compare residuals in-sample vs. out-of-sample. Requires the input to be a dictionary like in the above functions.
 
-    Returns:
-    dict: Dictionary containing the in-sample and out-of-sample residuals.
-        - in_sample_residuals (DataFrame): In-sample residuals.
-        - oos_residuals (DataFrame): Out-of-sample residuals.
-    """
 
-    pass
+
+
+
 
 def compiler_function(file_location, lags, splits, train_share):
     """
@@ -510,14 +510,14 @@ def compiler_function(file_location, lags, splits, train_share):
     # do prediction for each test set in split_dfs, then attach the prediction to the dictionary.
     predictions = {}
     for split in split_dfs:
-        predictions[split] = predict(split_dfs[split][f"{split}_test"], regression_models[split])
+        predictions[split] = fit_and_predict(split_dfs[split][f"{split}_test"], regression_models[split])
 
     # do predictions based on the full dataset, then attach the prediction to the dictionary.
     df_full = df.copy()
     df_full = create_lags(df_full, lags)
 
     for split in split_dfs:
-        predictions[f'full_sample_pred_{split}'] = predict(df_full, regression_models[split])
+        predictions[f'full_sample_pred_{split}'] = fit_and_predict(df_full, regression_models[split])
 
     # do oos_summary_stats for each prediction in predictions, then attach the summary stats to the dictionary.
     oos_summary_stats_dict = {}
