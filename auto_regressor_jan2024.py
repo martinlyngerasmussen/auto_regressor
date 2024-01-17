@@ -14,7 +14,7 @@ from scipy.stats import spearmanr
 
 ##### Add to compiler function: calculate_residuals, diagnostics
 
-## To do: create a way to match each model and dataset its been trained on. Perhaps create a unique ID?
+## To do: create a way to match each model and the train dataset its been trained on. Perhaps create a unique ID?
 #### E.g. XYZID_train: train XYZ ID, XYZID_test: train XYZ ID, XYZID_model: model XYZ ID
 #### This needs to be used to make sure that the 'correct' dfs (including split lengths, lags etc) are
 #### matched to the correct model.
