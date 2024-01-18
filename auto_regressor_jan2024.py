@@ -260,22 +260,16 @@ def create_lags(df, lags=5):
 
     return df
 
-def regression_OLS(input_df, p_cutoff=0.05):
+def regression_OLS(input_file, p_cutoff=0.05):
     """
-    Perform Ordinary Least Squares (OLS) regression with backward elimination.
+    Perform OLS regression for each split in the splits_dict and return a structured dictionary.
 
     Parameters:
-    - input_df (pandas DataFrame or dict): The input data for regression. If a DataFrame is provided, a single model is fitted.
-      If a dictionary of DataFrames is provided, multiple models are fitted for each split in the dictionary.
-    - p_cutoff (float, optional): The p-value cutoff for feature elimination. Default is 0.05.
+    - splits_dict (dict): Dictionary containing splits of the DataFrame.
+    - p_cutoff (float): The p-value cutoff for feature elimination. Default is 0.05.
 
     Returns:
-    - model (statsmodels.regression.linear_model.RegressionResultsWrapper or dict): The fitted OLS model(s).
-
-    Raises:
-    - ValueError: If p_cutoff is not a float between 0 and 1.
-    - TypeError: If input_df is not a pandas DataFrame or a dictionary of DataFrames.
-    - ValueError: If 'train' dataset is not found in any split of the input_df dictionary.
+    - dict: A structured dictionary with each split's data and fitted model.
     """
 
     # validate that p_cutoff is a float between 0 and 1
@@ -288,79 +282,49 @@ def regression_OLS(input_df, p_cutoff=0.05):
     elif p_cutoff < 0.01:
         print("Warning: p_cutoff is below 0.01. This may result in a model with too few features.")
 
-    def fit_model(df):
-        # Fit the OLS model
-        df = df.copy()
-        X = df.iloc[:, 1:]
+    def fit_model(train_data):
+        # Assuming 'y' is the first column
+        y = train_data.iloc[:, 0]
+        X = train_data.iloc[:, 1:]
         X = sm.add_constant(X)
-        y = df.iloc[:, [0]]
-
-        model = sm.OLS(y, X).fit(cov_type="HAC", cov_kwds={'maxlags': 4})
+        model = sm.OLS(y, X).fit()
 
         # Perform backward elimination
-        p_max = 1
-        while p_max > p_cutoff:
-            p = model.pvalues
-            p_max = max(p)
-            feature_max_p = p.idxmax()
-
-            if p_max > p_cutoff:
-                X = X.drop(feature_max_p, axis=1)
-                if len(X.columns) == 0:
-                    break
-                model = sm.OLS(y, X).fit(cov_type="HAC", cov_kwds={'maxlags': 4})
+        while max(model.pvalues) > p_cutoff:
+            if len(model.pvalues) == 1:  # Prevent removing all variables
+                break
+            highest_pval_feature = model.pvalues.idxmax()
+            X.drop(highest_pval_feature, axis=1, inplace=True)
+            model = sm.OLS(y, X).fit()
 
         return model
 
-    if isinstance(input_df, pd.DataFrame):
-        data_and_model = {}
-        data_and_model["data"] = input_df
-        data_and_model["model"] = fit_model(input_df)
+    final_dict = {}
 
-
-        final_dict = {}
-        # Extract the training and testing datasets
-        train_data = data[f'train_split_{split_name}']
-        test_data = data[f'test_split_{split_name}']
-
-        # Fit the model on the training data
-        fitted_model = fit_model(train_data)
-
-        # Add the original train and test datasets along with the fitted model to the final dictionary
-        final_dict[split_name] = {
-            'train': train_data,
-            'test': test_data,
+    if isinstance(input_file, pd.DataFrame):
+        fitted_model = fit_model(input_file)
+        final_dict = {
+            'data': input_file,
             'model': fitted_model
         }
 
-
-        return data_and_model
-
-    elif isinstance(input_df, dict):
-        # Initialize an empty dictionary to store the results
-        final_dict = {}
-
-        # Iterate over each split in the original splits_dict
-        for split_name, data in input_df.items():
-            # Extract the training and testing datasets
-            train_data = data[f'train_split_{split_name}']
-            test_data = data[f'test_split_{split_name}']
-
-            # Fit the model on the training data
-            fitted_model = fit_model(train_data)
-
-            # Add the original train and test datasets along with the fitted model to the final dictionary
-            final_dict[split_name] = {
-                'train': train_data,
-                'test': test_data,
-                'model': fitted_model
-            }
         return final_dict
 
-    else:
-        raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
+    for split_name, data in input_file.items():
+        train_data = data[f"train_{split_name}"]
+        test_data = data[f"test_{split_name}"]
 
+        fitted_model = fit_model(train_data)
 
+        final_dict[split_name] = {
+            'data': {
+                'train': train_data,
+                'test': test_data
+            },
+            'model': fitted_model
+        }
+
+    return final_dict
 
 
 
