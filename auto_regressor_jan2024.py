@@ -11,6 +11,8 @@ import os
 import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
+import random
+import string
 
 ##### Add to compiler function: calculate_residuals, diagnostics
 
@@ -148,6 +150,77 @@ def exploratory_analysis(df, target_variable):
         print()
 
 
+def generate_random_string():
+    # Generate a random letter (either uppercase or lowercase)
+    random_letter = random.choice(string.ascii_letters)
+
+    # Generate a random digit
+    random_digit = random.choice(string.digits)
+
+    # Combine them to form a two-character string
+    return random_letter + random_digit
+
+
+def create_splits(df, lags=5, splits=5, train_share=0.8):
+    """
+    Prepare the data for regression analysis by performing the following steps:
+    1. Split the DataFrame into multiple splits, where each split is a DataFrame.
+    2. Divide each split into a train and test set.
+    3. Create lagged features for the train and test sets of each split.
+
+    Parameters:
+    - df (pd.DataFrame): The dataframe to be split.
+    - lags (int): The number of lagged variables to create for each predictor variable (default: 5).
+    - splits (int): The number of splits to create from the DataFrame (default: 5).
+    - train_share (float): The proportion of data to use for training (default: 0.8).
+
+    Returns:
+    - splits_dict (dict): A dictionary containing the splits of the DataFrame, where each split is further divided into train and test sets.
+    """
+    # Validate input parameters
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("Input df must be a pandas DataFrame.")
+
+    if not isinstance(splits, int) or splits <= 0:
+        raise ValueError("Parameter 'splits' must be an integer greater than 0.")
+
+    if not isinstance(lags, int) or lags < 0:
+        raise ValueError("Parameter 'lags' must be a non-negative integer.")
+
+    if not isinstance(train_share, float) or not 0 < train_share < 1:
+        raise ValueError("Parameter 'train_share' must be a float between 0 and 1.")
+
+    # Split the DataFrame into multiple splits
+    split_dfs = np.array_split(df, splits)
+
+    # Create a dictionary to store the splits
+    splits_dict = {}
+
+    for split_df in split_dfs:
+        ## Create a random two-character string with one letter + one number.
+        split_id = generate_random_string()
+
+        split_name = f"split_{split_id}"
+
+        # Calculate the split point for train-test division
+        split_point = int(len(split_df) * train_share)
+
+        # Create train and test sets for the split
+        train_df = split_df.iloc[:split_point]
+        test_df = split_df.iloc[split_point:]
+
+        # Create lagged features for train and test sets
+        train_df = create_lags(train_df, lags)
+        test_df = create_lags(test_df, lags)
+
+        # Store the train and test sets in the splits dictionary
+        splits_dict[split_name] = {
+            f"train_split_{split_id}": train_df,
+            f"test_split_{split_id}": test_df
+        }
+
+    return splits_dict
+
 def create_lags(df, lags=5):
     """
     Create lagged features for a dataframe or a dictionary of dataframes.
@@ -186,65 +259,6 @@ def create_lags(df, lags=5):
             print("No lags were created.")
 
     return df
-
-
-
-def create_splits(df, lags=5, splits=5, train_share=0.8):
-    """
-    Prepare the data for regression analysis by performing the following steps:
-    1. Split the DataFrame into multiple splits, where each split is a DataFrame.
-    2. Divide each split into a train and test set.
-    3. Create lagged features for the train and test sets of each split.
-
-    Parameters:
-    - df (pd.DataFrame): The dataframe to be split.
-    - lags (int): The number of lagged variables to create for each predictor variable (default: 5).
-    - splits (int): The number of splits to create from the DataFrame (default: 5).
-    - train_share (float): The proportion of data to use for training (default: 0.8).
-
-    Returns:
-    - splits_dict (dict): A dictionary containing the splits of the DataFrame, where each split is further divided into train and test sets.
-    """
-    # Validate input parameters
-    if not isinstance(df, pd.DataFrame):
-        raise TypeError("Input df must be a pandas DataFrame.")
-
-    if not isinstance(splits, int) or splits <= 0:
-        raise ValueError("Parameter 'splits' must be an integer greater than 0.")
-
-    if not isinstance(lags, int) or lags < 0:
-        raise ValueError("Parameter 'lags' must be a non-negative integer.")
-
-    if not isinstance(train_share, float) or not 0 < train_share < 1:
-        raise ValueError("Parameter 'train_share' must be a float between 0 and 1.")
-
-    # Split the DataFrame into multiple splits
-    split_dfs = np.array_split(df, splits)
-
-    # Create a dictionary to store the splits
-    splits_dict = {}
-
-    for i, split_df in enumerate(split_dfs):
-        split_name = f"split_{i+1}"
-
-        # Calculate the split point for train-test division
-        split_point = int(len(split_df) * train_share)
-
-        # Create train and test sets for the split
-        train_df = split_df.iloc[:split_point]
-        test_df = split_df.iloc[split_point:]
-
-        # Create lagged features for train and test sets
-        train_df = create_lags(train_df, lags)
-        test_df = create_lags(test_df, lags)
-
-        # Store the train and test sets in the splits dictionary
-        splits_dict[split_name] = {
-            f"{split_name}_train": train_df,
-            f"{split_name}_test": test_df
-        }
-
-    return splits_dict
 
 def regression_OLS(input_df, p_cutoff=0.05):
     """
@@ -299,20 +313,56 @@ def regression_OLS(input_df, p_cutoff=0.05):
         return model
 
     if isinstance(input_df, pd.DataFrame):
-        return fit_model(input_df)
+        data_and_model = {}
+        data_and_model["data"] = input_df
+        data_and_model["model"] = fit_model(input_df)
+
+
+        final_dict = {}
+        # Extract the training and testing datasets
+        train_data = data[f'train_split_{split_name}']
+        test_data = data[f'test_split_{split_name}']
+
+        # Fit the model on the training data
+        fitted_model = fit_model(train_data)
+
+        # Add the original train and test datasets along with the fitted model to the final dictionary
+        final_dict[split_name] = {
+            'train': train_data,
+            'test': test_data,
+            'model': fitted_model
+        }
+
+
+        return data_and_model
 
     elif isinstance(input_df, dict):
-        models = {}
-        for split, data in input_df.items():
-            if 'train' in data:
-                model_name = f"{split}_model"
-                models[model_name] = fit_model(data['train'])
-            else:
-                raise ValueError(f"No 'train' dataset found in {split}.")
-        return models
+        # Initialize an empty dictionary to store the results
+        final_dict = {}
+
+        # Iterate over each split in the original splits_dict
+        for split_name, data in input_df.items():
+            # Extract the training and testing datasets
+            train_data = data[f'train_split_{split_name}']
+            test_data = data[f'test_split_{split_name}']
+
+            # Fit the model on the training data
+            fitted_model = fit_model(train_data)
+
+            # Add the original train and test datasets along with the fitted model to the final dictionary
+            final_dict[split_name] = {
+                'train': train_data,
+                'test': test_data,
+                'model': fitted_model
+            }
+        return final_dict
 
     else:
         raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
+
+
+
+
 
 def fit_and_predict(data, models):
     """
@@ -450,7 +500,7 @@ def compare_fitted_models(models_and_data):
 def calculate_residuals():
 
     ## Compare residuals in-sample vs. out-of-sample. Requires the input to be a dictionary like in the above functions.
-
+    pass
 
 
 
