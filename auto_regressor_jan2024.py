@@ -80,7 +80,6 @@ def remove_colinear_features(df, vif_threshold=10):
 
     Returns:
     - df (DataFrame): The modified DataFrame with collinear features removed.
-
     """
 
     # Assuming 'y' is the first column and should be excluded from VIF calculation
@@ -90,6 +89,9 @@ def remove_colinear_features(df, vif_threshold=10):
 
     # Loop until all VIFs are smaller than the cut-off value
     vif_cut_off = vif_threshold
+
+    # List to store names of removed features
+    removed_features = []
 
     print("Removing colinear features...")
     while True:
@@ -110,8 +112,15 @@ def remove_colinear_features(df, vif_threshold=10):
         # Remove the feature with the highest VIF from X
         X = X.drop(feature_with_max_vif, axis=1)
         print(f"Variable '{feature_with_max_vif}' is being dropped due to high multicollinearity (VIF = {max_vif}).")
+        removed_features.append(feature_with_max_vif)  # Add the removed feature to the list
 
     print("Done removing colinear features.")
+
+    # Print the names of removed features
+    if removed_features:
+        print("Removed features due to high collinearity:", ", ".join(removed_features))
+    else:
+        print("No features were removed due to high collinearity.")
 
     # Reconstruct the dataframe with 'y' and the reduced set of features
     df = pd.concat([y, X], axis=1)
@@ -214,6 +223,8 @@ def create_splits(df, lags=5, splits=5, train_share=0.8):
             f"test_split_{split_id}": test_df
         }
 
+    print("Each split is assigned a unique ID. The ID is a random two-character string with one letter + one number.")
+
     return splits_dict
 
 def create_lags(df, lags=5):
@@ -231,24 +242,32 @@ def create_lags(df, lags=5):
         raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
 
     def create_lags_for_df(dataframe, lags):
+        original_columns = dataframe.columns  # Store the original columns
         lagged_df = dataframe.copy()
         for lag in range(1, lags + 1):
-            shifted = dataframe.shift(lag)
-            shifted.columns = [f'{col}_lag{lag}' for col in dataframe.columns]
+            shifted = dataframe[original_columns].shift(lag)  # Only shift original columns
+            shifted.columns = [f'{col}_lag{lag}' for col in original_columns]
             lagged_df = pd.concat([lagged_df, shifted], axis=1)
+
+        # Drop rows where any feature other than 'y' is NaN
+        cols_except_y = [col for col in lagged_df.columns if col not in original_columns]
+        lagged_df = lagged_df.dropna(subset=cols_except_y)
         return lagged_df
 
     if isinstance(df, pd.DataFrame):
         df = create_lags_for_df(df, lags)
     elif isinstance(df, dict):
         for split in df:
-            df[split]['train'] = create_lags_for_df(df[split]['train'], lags)
-            df[split]['test'] = create_lags_for_df(df[split]['test'], lags)
+            train_key = next((key for key in df[split] if key.startswith('train')), None)
+            test_key = next((key for key in df[split] if key.startswith('test')), None)
+            if train_key:
+                df[split][train_key] = create_lags_for_df(df[split][train_key], lags)
+            if test_key:
+                df[split][test_key] = create_lags_for_df(df[split][test_key], lags)
 
     return df
 
-
-def regression_OLS(input_file, p_cutoff=0.05):
+def regression_OLS(splits_dict, p_cutoff=0.05):
     """
     Perform OLS regression for each split in the splits_dict and return a structured dictionary.
 
@@ -264,7 +283,7 @@ def regression_OLS(input_file, p_cutoff=0.05):
     if not isinstance(p_cutoff, float) or not 0 < p_cutoff < 1:
         raise ValueError("Parameter 'p_cutoff' must be a float between 0 and 1.")
 
-    # raise caution if p_cutoff is above 0.1 or below 0.01:
+    # raise caution if p_cutoff is above 0.1 or below 0.01
     if p_cutoff > 0.1:
         print("Warning: p_cutoff is above 0.1. This may result in a model with too many features.")
     elif p_cutoff < 0.01:
@@ -289,74 +308,85 @@ def regression_OLS(input_file, p_cutoff=0.05):
 
     final_dict = {}
 
-    if isinstance(input_file, pd.DataFrame):
-        fitted_model = fit_model(input_file)
+    if isinstance(splits_dict, pd.DataFrame):
+        fitted_model = fit_model(splits_dict)
         final_dict = {
-            'data': input_file,
+            'data': splits_dict,
             'model': fitted_model
         }
 
         return final_dict
 
-    for split_name, data in input_file.items():
-        train_data = data[f"train_{split_name}"]
-        test_data = data[f"test_{split_name}"]
+    for split_name, data in splits_dict.items():
+        train_key = next((key for key in data if key.startswith('train')), None)
+        test_key = next((key for key in data if key.startswith('test')), None)
 
-        fitted_model = fit_model(train_data)
+        if train_key and test_key:
+            train_data = data[train_key]
+            test_data = data[test_key]
 
-        final_dict[split_name] = {
-            'data': {
-                'train': train_data,
-                'test': test_data
-            },
-            'model': fitted_model
-        }
+            fitted_model = fit_model(train_data)
+
+            final_dict[split_name] = {
+                'data': {
+                    train_key: train_data,
+                    test_key: test_data
+                },
+                'model': fitted_model
+            }
 
     return final_dict
 
-def fit_and_predict(data, models):
+def fit_and_predict(ols_output):
     """
-    Creates a dataframe or dictionary of dataframes with the actual and predicted values of y.
+    Creates a single dataframe containing actual and predicted values of y for both train and test datasets across all splits.
 
     Parameters:
-    - data (pd.DataFrame or dict): The dataframe or dictionary of dataframes to be used for prediction.
-    - models (statsmodels.regression.linear_model.RegressionResultsWrapper or dict): The fitted model(s).
+    - ols_output (dict): The output from regression_OLS function, containing data and models for each split.
 
     Returns:
-    - A dataframe or dictionary of dataframes with the actual and predicted values of y.
+    - pd.DataFrame: A combined dataframe with the actual and predicted values of y across all splits.
     """
 
-    def make_prediction(df, model):
-        df = df.copy()
-        X = df.iloc[:, 1:]
-        X = sm.add_constant(X)
-        y = df.iloc[:, [0]]
+    def prepare_data_for_prediction(df, model, model_features):
+        # Assuming 'y' is the first column
+        y = df.iloc[:, 0]
 
-        # Predict the target variable
-        y_pred = model.predict(X)
+        # Aligning columns with model features
+        df_aligned = df.iloc[:, 1:].reindex(columns=model_features, fill_value=0)
 
-        df_pred = pd.DataFrame()
-        df_pred[['y_actual']] = y
-        df_pred[['y_pred']] = y_pred
+        # Adding a constant if the model includes it
+        if 'const' in model_features:
+            df_aligned['const'] = 1
 
-        return df_pred
+        return df_aligned, y
 
-    if isinstance(data, pd.DataFrame) and not isinstance(models, dict):
-        return make_prediction(data, models)
+    all_splits_df = pd.DataFrame()
 
-    elif isinstance(data, dict) and isinstance(models, dict):
-        predictions = {}
-        for split, model in models.items():
-            split_key = split.replace('_model', '')  # Get the original split key
-            if 'test' in data[split_key]:
-                predictions[split] = make_prediction(data[split_key]['test'], model)
-            else:
-                raise ValueError(f"No 'test' dataset found in {split_key}.")
-        return predictions
+    for split_name, content in ols_output.items():
+        model = content['model']
+        model_features = model.model.exog_names
 
-    else:
-        raise TypeError("Data and models must be either both pandas DataFrames or both dictionaries.")
+        # Predict for train dataset
+        train_key = next((key for key in content['data'] if key.startswith('train')), None)
+        if train_key:
+            train_data, y_train = prepare_data_for_prediction(content['data'][train_key], model, model_features)
+            y_fitted = model.predict(train_data)
+            train_data = train_data.assign(y_actual=y_train, **{f'y_fitted_{split_name}': y_fitted})
 
+        # Predict for test dataset
+        test_key = next((key for key in content['data'] if key.startswith('test')), None)
+        if test_key:
+            test_data, y_test = prepare_data_for_prediction(content['data'][test_key], model, model_features)
+            y_pred = model.predict(test_data)
+            test_data = test_data.assign(y_actual=y_test, **{f'y_pred_{split_name}': y_pred})
+
+        # Combine train and test datasets
+        if train_key and test_key:
+            combined_data = pd.concat([train_data, test_data])[['y_actual', f'y_fitted_{split_name}', f'y_pred_{split_name}']]
+            all_splits_df = pd.concat([all_splits_df, combined_data])
+
+    return all_splits_df.reset_index(drop=True)
 
 def oos_summary_stats(data):
     """
