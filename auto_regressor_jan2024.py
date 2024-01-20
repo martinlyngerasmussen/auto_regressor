@@ -16,11 +16,6 @@ import string
 
 ##### Add to compiler function: calculate_residuals, diagnostics
 
-## To do: create a way to match each model and the train dataset its been trained on. Perhaps create a unique ID?
-#### E.g. XYZID_train: train XYZ ID, XYZID_test: train XYZ ID, XYZID_model: model XYZ ID
-#### This needs to be used to make sure that the 'correct' dfs (including split lengths, lags etc) are
-#### matched to the correct model.
-
 def load_df(file_location):
     """
     Constructs a dataframe with data from a csv file and removes colinear features.
@@ -243,22 +238,15 @@ def create_lags(df, lags=5):
             lagged_df = pd.concat([lagged_df, shifted], axis=1)
         return lagged_df
 
-    if isinstance(df, dict):
+    if isinstance(df, pd.DataFrame):
+        df = create_lags_for_df(df, lags)
+    elif isinstance(df, dict):
         for split in df:
-            for dataset in df[split]:
-                df[split][dataset] = create_lags_for_df(df[split][dataset], lags)
-    else:
-        if isinstance(df, dict):
-            print("Please create splits before creating lags to avoid data leakage.")
-        # ask user if they want to create lags for the full dataset. Only proceed if user says yes. If no, stop the function.
-        elif input("Do you want to create lags for the full dataset? (y/n) ") == 'y':
-            print("Creating lags for the full dataset...")
-            df = create_lags_for_df(df, lags)
-            print("Done creating lags for the full dataset.")
-        else:
-            print("No lags were created.")
+            df[split]['train'] = create_lags_for_df(df[split]['train'], lags)
+            df[split]['test'] = create_lags_for_df(df[split]['test'], lags)
 
     return df
+
 
 def regression_OLS(input_file, p_cutoff=0.05):
     """
@@ -325,8 +313,6 @@ def regression_OLS(input_file, p_cutoff=0.05):
         }
 
     return final_dict
-
-
 
 def fit_and_predict(data, models):
     """
