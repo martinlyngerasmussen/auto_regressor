@@ -1,18 +1,20 @@
 # import libraries
 import pandas as pd
-import statsmodels.api as sm
-from sklearn.metrics import r2_score
 import numpy as np
-from statsmodels.stats.outliers_influence import variance_inflation_factor, reset_ramsey
-from prettytable import PrettyTable
-from datetime import datetime
-from stargazer.stargazer import Stargazer
 import os
 import seaborn as sns
 import matplotlib.pyplot as plt
+import statsmodels.api as sm
+from sklearn.metrics import r2_score
+from statsmodels.stats.outliers_influence import variance_inflation_factor, reset_ramsey
 from scipy.stats import spearmanr
-import random
+from stargazer.stargazer import Stargazer
 import string
+import random
+from IPython.display import display  # For displaying DataFrame styles in Jupyter Notebook
+
+
+## fix that the output table from oos_summary_stats shows the dates as integers
 
 ##### Add to compiler function: calculate_residuals, diagnostics
 
@@ -127,10 +129,23 @@ def remove_colinear_features(df, vif_threshold=10):
 
     return df
 
-def exploratory_analysis(df, target_variable):
-    ## create a correlation matrix with scatter plots for each pair of variables.
+def exploratory_analysis(df):
+    """
+    Perform exploratory analysis on the dataset with the first column as the target variable.
+
+    Parameters:
+    - df (DataFrame): The input DataFrame containing the target variable and predictor variables.
+
+    Returns:
+    None. Displays correlation and scatter plots.
+    """
+    # Assuming 'y' is the first column and is the target variable
+    target_variable = df.columns[0]
+    print(f"Target variable selected: {target_variable}")
+
+    # Create a correlation matrix with scatter plots for each pair of variables
     corr_matrix = df.corr()
-    corr_matrix.style.background_gradient(cmap='coolwarm')
+    display(corr_matrix.style.background_gradient(cmap='coolwarm'))
 
     predictor_variables = df.columns.drop(target_variable)
 
@@ -386,172 +401,131 @@ def fit_and_predict(ols_output):
             combined_data = pd.concat([train_data, test_data])[['y_actual', f'y_fitted_{split_name}', f'y_pred_{split_name}']]
             all_splits_df = pd.concat([all_splits_df, combined_data])
 
+    # Ensure the index is a datetime type if it's supposed to represent dates
+    if not all_splits_df.index.empty and isinstance(all_splits_df.index[0], (int, float)):
+        # This assumes that the index is meant to be a date and is in a format that pd.to_datetime can parse.
+        all_splits_df.index = pd.to_datetime(all_splits_df.index, format='%Y%m%d')  # Adjust the format as necessary
+
     return all_splits_df.reset_index(drop=True)
 
-def oos_summary_stats(data):
+import numpy as np
+import pandas as pd
+from sklearn.metrics import r2_score
+
+def oos_summary_stats(fit_and_predict_output):
     """
-    Calculate out-of-sample summary statistics for a regression model.
+    Calculate out-of-sample summary statistics for each split, including the unique ID and time period covered.
 
     Parameters:
-    data (DataFrame or dict): DataFrame containing the actual and predicted values,
-    or a dictionary of DataFrames with actual and predicted values.
+    fit_and_predict_output (pd.DataFrame): DataFrame containing 'y_actual', 'y_fitted_{split_name}',
+                                           and 'y_pred_{split_name}' for each split with a datetime index.
 
     Returns:
-    dict: Dictionary containing the out-of-sample summary statistics.
+    pd.DataFrame: Summary statistics for each split, including split ID and time period covered.
     """
-    import numpy as np
-    from sklearn.metrics import r2_score
+    # Initialize an empty DataFrame to store summary statistics
+    summary_stats = pd.DataFrame()
 
-    def calculate_stats(df_pred):
-        y_test = df_pred['y_actual']
-        y_pred = df_pred['y_pred']
+    # Extract split names based on the 'y_pred_' pattern in the column names
+    split_names = [col for col in fit_and_predict_output.columns if 'y_pred_' in col]
+    split_ids = [name.split('_')[-1] for name in split_names]
 
-        # Calculate statistics
-        oos_stats = {
-            'oos_r2': r2_score(y_test, y_pred),
-            'oos_mae': np.mean(np.abs(y_test - y_pred)),
-            'oos_mse': np.mean((y_test - y_pred) ** 2)
-        }
-        oos_stats['oos_rmse'] = np.sqrt(oos_stats['oos_mse'])
+    # Calculate statistics for each split
+    for split_name, split_id in zip(split_names, split_ids):
+        # Select the non-NaN predicted and actual values for the current split
+        mask = ~fit_and_predict_output[split_name].isna()
+        y_actual = fit_and_predict_output.loc[mask, 'y_actual']
+        y_pred = fit_and_predict_output.loc[mask, split_name]
 
-        # Find the min and max date of the test set
-        oos_stats['start_date'] = df_pred.index.min().strftime("%d/%m/%Y")
-        oos_stats['end_date'] = df_pred.index.max().strftime("%d/%m/%Y")
+        if y_actual.empty:
+            # If there are no non-NaN values for the current split, skip it
+            continue
 
-        return oos_stats
+        if y_actual.isna().any() or y_pred.isna().any():
+            # If there are NaN values in either the actual or predicted values, skip this split
+            continue
 
-    if isinstance(data, pd.DataFrame):
-        return calculate_stats(data)
-    elif isinstance(data, dict):
-        results = {}
-        for split_name, split_data in data.items():
-            test_df_key = f"{split_name}_test"
-            if test_df_key in split_data:
-                results[split_name] = calculate_stats(split_data[test_df_key])
-            else:
-                raise KeyError(f"'{test_df_key}' not found in '{split_name}'.")
-        return results
-    else:
-        raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
+        # Calculate R-squared, Mean Absolute Error (MAE), Mean Squared Error (MSE), and Root Mean Squared Error (RMSE)
+        r2 = r2_score(y_actual, y_pred)
+        mae = np.mean(np.abs(y_actual - y_pred))
+        mse = np.mean((y_actual - y_pred) ** 2)
+        rmse = np.sqrt(mse)
+
+        # Determine the time period covered by this split
+        # Assuming that the index is a datetime type or can be converted to one
+        dates = fit_and_predict_output.index[mask]
+        start_date = dates.min().strftime('%d/%b/%y') if hasattr(dates.min(), 'strftime') else str(dates.min())
+        end_date = dates.max().strftime('%d/%b/%y') if hasattr(dates.max(), 'strftime') else str(dates.max())
+        time_period = f"{start_date} to {end_date}"
+
+        # Populate the summary DataFrame
+        summary_stats[split_id] = [r2, mae, mse, rmse, time_period]
+
+    # Define the index names for the summary DataFrame
+    summary_stats.index = ['oos_r2', 'oos_mae', 'oos_mse', 'oos_rmse', 'time_period']
+
+    return summary_stats
 
 
-########## Work more on compare_fitted_models.
-def compare_fitted_models(models_and_data):
+
+def compare_fitted_models(ols_output):
     """
-    Compare the fitted models using Stargazer.
+    Modified to work with output from regression_OLS function.
+    Compares fitted models using Stargazer.
 
     Parameters:
-    models_and_data: this is a dictionary with the following structure:
-        models_and_data = {'model 1': {'fitted_model': model object,
-                                        'dataset': df used to train model},
-                            'model 2': {'fitted_model': model object,
-                                        'dataset': df used to train model},
-                            etc.
-        }
+    ols_output (dict): Output from regression_OLS function.
 
     Returns:
-    a table that compares the models provided in models_and_data.
-
+    Stargazer object: Comparison table of models.
     """
+    from stargazer.stargazer import Stargazer
 
-    ## loop over models_and_data to extract each fitted_model and attach it to the models list.
-
-    models = []
-    for model in models_and_data.keys():
-        models.append(models_and_data[model]["fitted_model"])
-
+    models = [content['model'] for content in ols_output.values()]
     stargazer = Stargazer(models)
-    ones_list = [1 for _ in models]
 
-    # Initialize an empty list for model_names_stargaze
-    model_names_stargaze = []
-
-    ## loop over models_and_data to extract each the start_date and end_date of each dataset and attach it to model_names_stargaze.
-    for model in models_and_data.keys():
-        start_date = models_and_data[model]["dataset"].index[0].strftime("%d/%m/%Y")
-        end_date = models_and_data[model]["dataset"].index[-1].strftime("%d/%m/%Y")
-        model_names_stargaze.append(f'{model}: {start_date} to {end_date}')
-        model_names_stargaze.append(('RESET test', reset_ramsey(model, degree=3)))
-
-    stargazer.custom_columns(model_names_stargaze, ones_list)
+    # Optional: Customize the Stargazer table further if needed
+    # e.g., stargazer.title("Comparison of Models")
 
     return stargazer
 
-def calculate_residuals():
 
-    ## Compare residuals in-sample vs. out-of-sample. Requires the input to be a dictionary like in the above functions.
-    pass
-
-
-
-
-
-def compiler_function(file_location, lags, splits, train_share):
+def one_stop_analysis(file_location, lags=5, splits=5, train_share=0.8, vif_threshold=10, p_cutoff=0.05):
     """
-    Compiles and executes a series of steps for econometric analysis.
+    A comprehensive function that performs the entire process from data loading to model analysis and displays the results.
 
     Parameters:
-    file_location (str): The file location of the dataset.
-    lags (int): The number of lags to create for each variable.
-    splits (int): The number of splits to create for cross-validation.
-    train_share (float): The proportion of the dataset to use for training.
+    - file_location (str): File location of the dataset.
+    - lags (int): Number of lagged variables to create for each predictor variable.
+    - splits (int): Number of splits to create from the DataFrame.
+    - train_share (float): Proportion of data to use for training.
+    - vif_threshold (float): Threshold value for Variance Inflation Factor.
+    - p_cutoff (float): P-value cutoff for feature elimination in OLS regression.
 
     Returns:
-    tuple: A tuple containing the following dictionaries:
-        - split_dfs: A dictionary of split datasets.
-        - regression_models: A dictionary of regression models.
-        - predictions: A dictionary of predictions.
-        - oos_summary_stats_dict: A dictionary of out-of-sample summary statistics.
+    None. Outputs are displayed within the function.
     """
-
-    # Load the dataframe.
+    # Step 1: Load and preprocess the data
     df = load_df(file_location)
+    df = remove_colinear_features(df, vif_threshold=vif_threshold)
+    exploratory_analysis(df)
 
-    # Create splits
-    split_dfs = create_splits(df, lags = lags, splits = splits, train_share = train_share)
+    # Step 2: Create splits and lagged features
+    splits_dict = create_splits(df, lags=lags, splits=splits, train_share=train_share)
 
-    # create lags for each split in split_dfs.
-    for split in split_dfs:
-        split_dfs[split][f"{split}_train"] = create_lags(split_dfs[split][f"{split}_train"], lags)
-        split_dfs[split][f"{split}_test"] = create_lags(split_dfs[split][f"{split}_test"], lags)
+    # Step 3: Perform OLS regression on each split
+    ols_output = regression_OLS(splits_dict, p_cutoff=p_cutoff)
 
-    # do regression_OLS for each train set in split_dfs, then attach the model to the dictionary.
-    regression_models = {}
-    for split in split_dfs:
-        regression_models[split] = regression_OLS(split_dfs[split][f"{split}_train"])
+    # Step 4: Fit and predict using the models
+    fit_predict_output = fit_and_predict(ols_output)
 
-    # before doing predictions, subset the test set to only include the columns that are also in the train set.
-    for split in split_dfs:
-        split_dfs[split][f"{split}_test"] = split_dfs[split][f"{split}_test"][split_dfs[split][f"{split}_train"].columns]
+    # Step 5: Calculate out-of-sample summary statistics and display the results
+    summary_stats_table = oos_summary_stats(fit_predict_output)
+    print("Out-of-Sample Summary Statistics:")
+    display(summary_stats_table)  # Display summary statistics in Jupyter Notebook
 
-        # make sure that 'const' is not in the test set if it is not in the train set.
-        if 'const' in split_dfs[split][f"{split}_train"].columns and 'const' not in split_dfs[split][f"{split}_test"].columns:
-            split_dfs[split][f"{split}_test"] = split_dfs[split][f"{split}_test"].drop('const', axis=1)
 
-        # but if the train set has a constant but the test set doesn't, then add it to the test set
-        elif 'const' in split_dfs[split][f"{split}_test"].columns and 'const' not in split_dfs[split][f"{split}_train"].columns:
-            split_dfs[split][f"{split}_test"] = sm.add_constant(split_dfs[split][f"{split}_test"])
-
-    ## test if the shape of the test set is the same as the train set, then print a warning if it is not.
-    for split in split_dfs:
-        if split_dfs[split][f"{split}_test"].shape[1] != split_dfs[split][f"{split}_train"].shape[1]:
-            print(f"Warning: the number of columns in {split}_test is not the same as the number of columns in {split}_train.")
-
-    # do prediction for each test set in split_dfs, then attach the prediction to the dictionary.
-    predictions = {}
-    for split in split_dfs:
-        predictions[split] = fit_and_predict(split_dfs[split][f"{split}_test"], regression_models[split])
-
-    # do predictions based on the full dataset, then attach the prediction to the dictionary.
-    df_full = df.copy()
-    df_full = create_lags(df_full, lags)
-
-    for split in split_dfs:
-        predictions[f'full_sample_pred_{split}'] = fit_and_predict(df_full, regression_models[split])
-
-    # do oos_summary_stats for each prediction in predictions, then attach the summary stats to the dictionary.
-    oos_summary_stats_dict = {}
-    for split in split_dfs:
-        oos_summary_stats_dict[split] = oos_summary_stats(predictions[split])
-
-    return split_dfs, regression_models, predictions, oos_summary_stats_dict
+    # Step 6: Compare fitted models and display the results
+    model_comparison_table = compare_fitted_models(ols_output)
+    print("Model Comparison:")
+    display(model_comparison_table)  # Display model comparison in Jupyter Notebook
