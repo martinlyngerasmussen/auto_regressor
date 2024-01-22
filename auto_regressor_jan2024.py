@@ -14,7 +14,7 @@ import random
 from IPython.display import display  # For displaying DataFrame styles in Jupyter Notebook
 
 
-## fix that the output table from oos_summary_stats shows the dates as integers
+## fix that the output table from oos_summary_stats shows
 
 ##### Add to compiler function: calculate_residuals, diagnostics
 
@@ -402,15 +402,11 @@ def fit_and_predict(ols_output):
             all_splits_df = pd.concat([all_splits_df, combined_data])
 
     # Ensure the index is a datetime type if it's supposed to represent dates
-    if not all_splits_df.index.empty and isinstance(all_splits_df.index[0], (int, float)):
+    if not all_splits_df.index.empty and not isinstance(all_splits_df.index[0], pd.Timestamp):
         # This assumes that the index is meant to be a date and is in a format that pd.to_datetime can parse.
-        all_splits_df.index = pd.to_datetime(all_splits_df.index, format='%Y%m%d')  # Adjust the format as necessary
+        all_splits_df.index = pd.to_datetime(all_splits_df.index, infer_datetime_format=True)
 
     return all_splits_df.reset_index(drop=True)
-
-import numpy as np
-import pandas as pd
-from sklearn.metrics import r2_score
 
 def oos_summary_stats(fit_and_predict_output):
     """
@@ -460,6 +456,12 @@ def oos_summary_stats(fit_and_predict_output):
 
         # Populate the summary DataFrame
         summary_stats[split_id] = [r2, mae, mse, rmse, time_period]
+
+    # Add a new row called "Split ID" with the original split names
+    summary_stats.loc['Split ID'] = split_ids
+
+    # Rename the columns to "Split 1", "Split 2", etc.
+    summary_stats.columns = [f"Split {i+1}" for i in range(len(summary_stats.columns))]
 
     # Define the index names for the summary DataFrame
     summary_stats.index = ['oos_r2', 'oos_mae', 'oos_mse', 'oos_rmse', 'time_period']
