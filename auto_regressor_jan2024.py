@@ -168,7 +168,6 @@ def exploratory_analysis(df):
             print(f"No strong evidence of non-linear relationship for {predictor}.")
         print()
 
-
 def generate_random_string():
     # Generate a random letter (either uppercase or lowercase)
     random_letter = random.choice(string.ascii_letters)
@@ -178,7 +177,6 @@ def generate_random_string():
 
     # Combine them to form a two-character string
     return random_letter + random_digit
-
 
 def create_splits(df, lags=5, splits=5, train_share=0.8):
     """
@@ -257,16 +255,15 @@ def create_lags(df, lags=5):
         raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
 
     def create_lags_for_df(dataframe, lags):
-        original_columns = dataframe.columns  # Store the original columns
+        original_columns = dataframe.columns
         lagged_df = dataframe.copy()
         for lag in range(1, lags + 1):
-            shifted = dataframe[original_columns].shift(lag)  # Only shift original columns
+            shifted = dataframe[original_columns].shift(lag)
             shifted.columns = [f'{col}_lag{lag}' for col in original_columns]
             lagged_df = pd.concat([lagged_df, shifted], axis=1)
 
-        # Drop rows where any feature other than 'y' is NaN
-        cols_except_y = [col for col in lagged_df.columns if col not in original_columns]
-        lagged_df = lagged_df.dropna(subset=cols_except_y)
+        # Drop rows with NaN values in lagged features
+        lagged_df = lagged_df.dropna()
         return lagged_df
 
     if isinstance(df, pd.DataFrame):
@@ -281,6 +278,8 @@ def create_lags(df, lags=5):
                 df[split][test_key] = create_lags_for_df(df[split][test_key], lags)
 
     return df
+
+
 
 def regression_OLS(splits_dict, p_cutoff=0.05):
     """
@@ -406,25 +405,22 @@ def fit_and_predict(ols_output):
         # This assumes that the index is meant to be a date and is in a format that pd.to_datetime can parse.
         all_splits_df.index = pd.to_datetime(all_splits_df.index, infer_datetime_format=True)
 
-    return all_splits_df.reset_index(drop=True)
+    return all_splits_df
 
 def oos_summary_stats(fit_and_predict_output):
-    """
-    Calculate out-of-sample summary statistics for each split, including the unique ID and time period covered.
-
-    Parameters:
-    fit_and_predict_output (pd.DataFrame): DataFrame containing 'y_actual', 'y_fitted_{split_name}',
-                                           and 'y_pred_{split_name}' for each split with a datetime index.
-
-    Returns:
-    pd.DataFrame: Summary statistics for each split, including split ID and time period covered.
-    """
     # Initialize an empty DataFrame to store summary statistics
     summary_stats = pd.DataFrame()
 
     # Extract split names based on the 'y_pred_' pattern in the column names
     split_names = [col for col in fit_and_predict_output.columns if 'y_pred_' in col]
     split_ids = [name.split('_')[-1] for name in split_names]
+
+    # Initialize lists to collect stats for each split
+    r2_list = []
+    mae_list = []
+    mse_list = []
+    rmse_list = []
+    time_period_list = []
 
     # Calculate statistics for each split
     for split_name, split_id in zip(split_names, split_ids):
@@ -433,12 +429,13 @@ def oos_summary_stats(fit_and_predict_output):
         y_actual = fit_and_predict_output.loc[mask, 'y_actual']
         y_pred = fit_and_predict_output.loc[mask, split_name]
 
-        if y_actual.empty:
-            # If there are no non-NaN values for the current split, skip it
-            continue
-
-        if y_actual.isna().any() or y_pred.isna().any():
-            # If there are NaN values in either the actual or predicted values, skip this split
+        if y_actual.empty or y_actual.isna().any() or y_pred.isna().any():
+            # Skip this split if there are NaN values in either the actual or predicted values
+            r2_list.append(np.nan)
+            mae_list.append(np.nan)
+            mse_list.append(np.nan)
+            rmse_list.append(np.nan)
+            time_period_list.append("NA to NA")
             continue
 
         # Calculate R-squared, Mean Absolute Error (MAE), Mean Squared Error (MSE), and Root Mean Squared Error (RMSE)
@@ -448,25 +445,31 @@ def oos_summary_stats(fit_and_predict_output):
         rmse = np.sqrt(mse)
 
         # Determine the time period covered by this split
-        # Assuming that the index is a datetime type or can be converted to one
         dates = fit_and_predict_output.index[mask]
-        start_date = dates.min().strftime('%d/%b/%y') if hasattr(dates.min(), 'strftime') else str(dates.min())
-        end_date = dates.max().strftime('%d/%b/%y') if hasattr(dates.max(), 'strftime') else str(dates.max())
+        start_date = dates.min().strftime('%Y-%m-%d') if hasattr(dates.min(), 'strftime') else str(dates.min())
+        end_date = dates.max().strftime('%Y-%m-%d') if hasattr(dates.max(), 'strftime') else str(dates.max())
         time_period = f"{start_date} to {end_date}"
 
-        # Populate the summary DataFrame
-        summary_stats[split_id] = [r2, mae, mse, rmse, time_period]
+        # Append the stats for the current split
+        r2_list.append(r2)
+        mae_list.append(mae)
+        mse_list.append(mse)
+        rmse_list.append(rmse)
+        time_period_list.append(time_period)
 
-    # Add a new row called "Split ID" with the original split names
-    summary_stats.loc['Split ID'] = split_ids
+    # Add the statistics to the DataFrame
+    summary_stats['oos_r2'] = r2_list
+    summary_stats['oos_mae'] = mae_list
+    summary_stats['oos_mse'] = mse_list
+    summary_stats['oos_rmse'] = rmse_list
+    summary_stats['time_period'] = time_period_list
 
-    # Rename the columns to "Split 1", "Split 2", etc.
-    summary_stats.columns = [f"Split {i+1}" for i in range(len(summary_stats.columns))]
-
-    # Define the index names for the summary DataFrame
-    summary_stats.index = ['oos_r2', 'oos_mae', 'oos_mse', 'oos_rmse', 'time_period']
+    # Assign the "Split ID" as the index of the DataFrame
+    summary_stats.index = split_ids
 
     return summary_stats
+
+
 
 
 
