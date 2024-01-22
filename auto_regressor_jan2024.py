@@ -14,9 +14,8 @@ import random
 from IPython.display import display  # For displaying DataFrame styles in Jupyter Notebook
 
 
-## fix that the output table from oos_summary_stats shows
+## To do: do prediction, chart actual vs. fitted/predicted.
 
-##### Add to compiler function: calculate_residuals, diagnostics
 
 def load_df(file_location):
     """
@@ -279,8 +278,6 @@ def create_lags(df, lags=5):
 
     return df
 
-
-
 def regression_OLS(splits_dict, p_cutoff=0.05):
     """
     Perform OLS regression for each split in the splits_dict and return a structured dictionary.
@@ -415,12 +412,13 @@ def oos_summary_stats(fit_and_predict_output):
     split_names = [col for col in fit_and_predict_output.columns if 'y_pred_' in col]
     split_ids = [name.split('_')[-1] for name in split_names]
 
-    # Initialize lists to collect stats for each split
+    # Initialize lists to collect stats and additional information for each split
     r2_list = []
     mae_list = []
     mse_list = []
     rmse_list = []
     time_period_list = []
+    sample_size_list = []
 
     # Calculate statistics for each split
     for split_name, split_id in zip(split_names, split_ids):
@@ -429,49 +427,48 @@ def oos_summary_stats(fit_and_predict_output):
         y_actual = fit_and_predict_output.loc[mask, 'y_actual']
         y_pred = fit_and_predict_output.loc[mask, split_name]
 
+        # If there are NaN values in either the actual or predicted values, skip this split
         if y_actual.empty or y_actual.isna().any() or y_pred.isna().any():
-            # Skip this split if there are NaN values in either the actual or predicted values
             r2_list.append(np.nan)
             mae_list.append(np.nan)
             mse_list.append(np.nan)
             rmse_list.append(np.nan)
             time_period_list.append("NA to NA")
+            sample_size_list.append(np.nan)
             continue
 
-        # Calculate R-squared, Mean Absolute Error (MAE), Mean Squared Error (MSE), and Root Mean Squared Error (RMSE)
-        r2 = r2_score(y_actual, y_pred)
-        mae = np.mean(np.abs(y_actual - y_pred))
-        mse = np.mean((y_actual - y_pred) ** 2)
-        rmse = np.sqrt(mse)
+        # Calculate statistics and add them to their respective lists
+        r2_list.append(r2_score(y_actual, y_pred))
+        mae_list.append(np.mean(np.abs(y_actual - y_pred)))
+        mse_list.append(np.mean((y_actual - y_pred) ** 2))
+        rmse_list.append(np.sqrt(mse_list[-1]))
 
-        # Determine the time period covered by this split
-        dates = fit_and_predict_output.index[mask]
-        start_date = dates.min().strftime('%Y-%m-%d') if hasattr(dates.min(), 'strftime') else str(dates.min())
-        end_date = dates.max().strftime('%Y-%m-%d') if hasattr(dates.max(), 'strftime') else str(dates.max())
-        time_period = f"{start_date} to {end_date}"
+        # Format the time period and append to the list
+        start_date_formatted = pd.to_datetime(y_actual.index.min()).strftime('%b-%y')
+        end_date_formatted = pd.to_datetime(y_actual.index.max()).strftime('%b-%y')
+        time_period_list.append(f"{start_date_formatted} to {end_date_formatted}")
 
-        # Append the stats for the current split
-        r2_list.append(r2)
-        mae_list.append(mae)
-        mse_list.append(mse)
-        rmse_list.append(rmse)
-        time_period_list.append(time_period)
+        # Append the sample size for the split
+        sample_size_list.append(mask.sum())
 
-    # Add the statistics to the DataFrame
-    summary_stats['oos_r2'] = r2_list
-    summary_stats['oos_mae'] = mae_list
-    summary_stats['oos_mse'] = mse_list
-    summary_stats['oos_rmse'] = rmse_list
-    summary_stats['time_period'] = time_period_list
+    # Create a DataFrame from the collected lists
+    summary_stats = pd.DataFrame({
+        'R2': r2_list,
+        'MAE': mae_list,
+        'MSE': mse_list,
+        'RMSE': rmse_list,
+        'Sample period': time_period_list,
+        'Sample length': sample_size_list,
+        'Split ID': split_ids  # Add Split ID as a column
+    })
 
-    # Assign the "Split ID" as the index of the DataFrame
-    summary_stats.index = split_ids
+    # Transpose the DataFrame to have statistics as rows and splits as columns
+    summary_stats = summary_stats.T
+
+    # Rename the columns to "Split 1", "Split 2", etc.
+    summary_stats.columns = [f"Split {i+1}" for i in range(summary_stats.shape[1])]
 
     return summary_stats
-
-
-
-
 
 def compare_fitted_models(ols_output):
     """
@@ -493,7 +490,6 @@ def compare_fitted_models(ols_output):
     # e.g., stargazer.title("Comparison of Models")
 
     return stargazer
-
 
 def one_stop_analysis(file_location, lags=5, splits=5, train_share=0.8, vif_threshold=10, p_cutoff=0.05):
     """
@@ -529,8 +525,11 @@ def one_stop_analysis(file_location, lags=5, splits=5, train_share=0.8, vif_thre
     print("Out-of-Sample Summary Statistics:")
     display(summary_stats_table)  # Display summary statistics in Jupyter Notebook
 
+    print("")
 
     # Step 6: Compare fitted models and display the results
     model_comparison_table = compare_fitted_models(ols_output)
     print("Model Comparison:")
+    print("")
+
     display(model_comparison_table)  # Display model comparison in Jupyter Notebook
