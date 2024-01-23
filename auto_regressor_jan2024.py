@@ -67,7 +67,6 @@ def load_df(file_location):
 
        # Assuming 'y' is the first column and should be excluded from VIF calculation
     y = dataset.iloc[:, 0]  # Store 'y' separately
-    print(f"y is set to {y.name}, the first column of the dataset. To change this, please change the first column of the dataset.")
 
     return dataset
 
@@ -94,7 +93,6 @@ def remove_colinear_features(df, vif_threshold=10):
     # List to store names of removed features
     removed_features = []
 
-    print("Removing colinear features...")
     while True:
         # Create a DataFrame with the features and their respective VIFs
         vif = pd.DataFrame()
@@ -115,13 +113,9 @@ def remove_colinear_features(df, vif_threshold=10):
         print(f"Variable '{feature_with_max_vif}' is being dropped due to high multicollinearity (VIF = {max_vif}).")
         removed_features.append(feature_with_max_vif)  # Add the removed feature to the list
 
-    print("Done removing colinear features.")
-
     # Print the names of removed features
     if removed_features:
         print("Removed features due to high collinearity:", ", ".join(removed_features))
-    else:
-        print("No features were removed due to high collinearity.")
 
     # Reconstruct the dataframe with 'y' and the reduced set of features
     df = pd.concat([y, X], axis=1)
@@ -138,15 +132,19 @@ def exploratory_analysis(df):
     Returns:
     None. Displays correlation and scatter plots.
     """
+
     # Assuming 'y' is the first column and is the target variable
     target_variable = df.columns[0]
     print(f"Target variable selected: {target_variable}")
 
     # Create a correlation matrix with scatter plots for each pair of variables
     corr_matrix = df.corr()
+    print("")
+    print("Correlation matrix:")
     display(corr_matrix.style.background_gradient(cmap='coolwarm'))
 
     predictor_variables = df.columns.drop(target_variable)
+    df_temp = df.copy().dropna()
 
     for predictor in predictor_variables:
         # Visual inspection using scatter plot
@@ -155,17 +153,52 @@ def exploratory_analysis(df):
         plt.show()
 
         # Statistical test for non-linearity using Spearman's rank correlation
-        correlation, p_value = spearmanr(df[predictor], df[target_variable])
+        correlation, p_value = spearmanr(df_temp[predictor], df_temp[target_variable])
 
         print(f"Spearman's correlation between {predictor} and {target_variable}: {correlation:.2f}")
         print(f"P-value: {p_value:.3f}")
 
         # Determine if transformation might be necessary
         if p_value < 0.05 and correlation not in [-1, 1]:
-            print(f"Potential non-linear relationship detected for {predictor}. Consider transformation.")
+            print(f"Potential non-linear relationship detected for {predictor}. Adding var^2 * sign[var].")
+
+            ## Add a column with the square of the predictor variable (keep the sign, + or -, of the original variable. Also keep the original column)
+            df_temp[f"{predictor}_squared"] = np.sign(df_temp[predictor]) * df_temp[predictor] ** 2
+
         else:
-            print(f"No strong evidence of non-linear relationship for {predictor}.")
+            print(f"No strong evidence of non-linear relationship between {predictor} and {target_variable}.")
         print()
+
+    return df_temp
+
+def non_linearity(df):
+    """
+    Perform exploratory analysis on the dataset with the first column as the target variable.
+
+    Parameters:
+    - df (DataFrame): The input DataFrame containing the target variable and predictor variables.
+
+    Returns:
+    None. Displays correlation and scatter plots.
+    """
+
+    # Assuming 'y' is the first column and is the target variable
+    target_variable = df.columns[0]
+
+    # Create a correlation matrix with scatter plots for each pair of variables
+    predictor_variables = df.columns.drop(target_variable)
+    df_temp = df.copy().dropna()
+
+    for predictor in predictor_variables:
+        # Statistical test for non-linearity using Spearman's rank correlation
+        correlation, p_value = spearmanr(df_temp[predictor], df_temp[target_variable])
+
+        # Determine if transformation might be necessary
+        if p_value < 0.05 and correlation not in [-1, 1]:
+            ## Add a column with the square of the predictor variable (keep the sign, + or -, of the original variable. Also keep the original column)
+            df_temp[f"{predictor}_squared_sign_kept"] = np.sign(df_temp[predictor]) * df_temp[predictor] ** 2
+
+    return df_temp
 
 def generate_random_string():
     # Generate a random letter (either uppercase or lowercase)
@@ -235,8 +268,6 @@ def create_splits(df, lags=5, splits=5, train_share=0.8):
             f"test_split_{split_id}": test_df
         }
 
-    print("Each split is assigned a unique ID. The ID is a random two-character string with one letter + one number.")
-
     return splits_dict
 
 def create_lags(df, lags=5):
@@ -278,7 +309,7 @@ def create_lags(df, lags=5):
 
     return df
 
-def regression_OLS(splits_dict, p_cutoff=0.05):
+def regression_OLS(splits_dict, p_cutoff=0.05, show_removed_features=False):
     """
     Perform OLS regression for each split in the splits_dict and return a structured dictionary.
 
@@ -300,6 +331,8 @@ def regression_OLS(splits_dict, p_cutoff=0.05):
     elif p_cutoff < 0.01:
         print("Warning: p_cutoff is below 0.01. This may result in a model with too few features.")
 
+    removed_features = []
+
     def fit_model(train_data):
         # Assuming 'y' is the first column
         y = train_data.iloc[:, 0]
@@ -312,6 +345,7 @@ def regression_OLS(splits_dict, p_cutoff=0.05):
             if len(model.pvalues) == 1:  # Prevent removing all variables
                 break
             highest_pval_feature = model.pvalues.idxmax()
+            removed_features.append(highest_pval_feature)
             X.drop(highest_pval_feature, axis=1, inplace=True)
             model = sm.OLS(y, X).fit()
 
@@ -338,6 +372,10 @@ def regression_OLS(splits_dict, p_cutoff=0.05):
 
             fitted_model = fit_model(train_data)
 
+            if show_removed_features:
+                print("")
+                print(f"{split_name}'s model due to p-values being above {p_cutoff}: {', '.join(removed_features)}")
+
             final_dict[split_name] = {
                 'data': {
                     train_key: train_data,
@@ -345,6 +383,8 @@ def regression_OLS(splits_dict, p_cutoff=0.05):
                 },
                 'model': fitted_model
             }
+
+
 
     return final_dict
 
@@ -491,7 +531,7 @@ def compare_fitted_models(ols_output):
 
     return stargazer
 
-def one_stop_analysis(file_location, lags=5, splits=5, train_share=0.8, vif_threshold=10, p_cutoff=0.05):
+def one_stop_analysis(file_location, lags=5, splits=1, train_share=0.9, vif_threshold=10, p_cutoff=0.05):
     """
     A comprehensive function that performs the entire process from data loading to model analysis and displays the results.
 
@@ -509,6 +549,15 @@ def one_stop_analysis(file_location, lags=5, splits=5, train_share=0.8, vif_thre
     # Step 1: Load and preprocess the data
     df = load_df(file_location)
     df = remove_colinear_features(df, vif_threshold=vif_threshold)
+    df = non_linearity(df)
+
+
+    print("")
+    print("#############################################")
+    print("PART 1: EXPLORATORY ANALYSIS")
+    print("#############################################")
+    print("")
+
     exploratory_analysis(df)
 
     # Step 2: Create splits and lagged features
@@ -522,14 +571,29 @@ def one_stop_analysis(file_location, lags=5, splits=5, train_share=0.8, vif_thre
 
     # Step 5: Calculate out-of-sample summary statistics and display the results
     summary_stats_table = oos_summary_stats(fit_predict_output)
-    print("Out-of-Sample Summary Statistics:")
-    display(summary_stats_table)  # Display summary statistics in Jupyter Notebook
+
 
     print("")
+    print("#############################################")
+    print("PART 2: OUT-OF-SAMPLE SUMMARY STATISTICS")
+    print("#############################################")
+
+    display(summary_stats_table)  # Display summary statistics in Jupyter Notebook
 
     # Step 6: Compare fitted models and display the results
     model_comparison_table = compare_fitted_models(ols_output)
-    print("Model Comparison:")
+    print("")
+    print("#############################################")
+    print("PART 3: MODEL COMPARISON")
+    print("#############################################")
     print("")
 
     display(model_comparison_table)  # Display model comparison in Jupyter Notebook
+
+    print("")
+    print("#############################################")
+    print("PART 4: MODEL PERFORMANCE: IN-SAMPLE VS. OUT-OF-SAMPLE")
+    print("#############################################")
+    print("")
+
+    fit_predict_output.plot()
