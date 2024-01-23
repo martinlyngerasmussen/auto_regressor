@@ -68,6 +68,26 @@ def load_df(file_location):
        # Assuming 'y' is the first column and should be excluded from VIF calculation
     y = dataset.iloc[:, 0]  # Store 'y' separately
 
+    # Infer the frequency of the dataset
+    inferred_freq = pd.infer_freq(dataset.index)
+    if inferred_freq is not None:
+        # Set the frequency on the index
+        dataset.index = pd.DatetimeIndex(dataset.index, freq=inferred_freq)
+
+        # Now you can check the frequency and add dummies accordingly
+        if inferred_freq.startswith('M'):
+            # Create dummies for months if the data is monthly
+            dataset['jan_2020'] = np.where((dataset.index.month == 1) & (dataset.index.year == 2020), 1, 0)
+            dataset['feb_2020'] = np.where((dataset.index.month == 2) & (dataset.index.year == 2020), 1, 0)
+            dataset['mar_2020'] = np.where((dataset.index.month == 3) & (dataset.index.year == 2020), 1, 0)
+            dataset['apr_2020'] = np.where((dataset.index.month == 4) & (dataset.index.year == 2020), 1, 0)
+            dataset['may_2020'] = np.where((dataset.index.month == 5) & (dataset.index.year == 2020), 1, 0)
+            dataset['jun_2020'] = np.where((dataset.index.month == 6) & (dataset.index.year == 2020), 1, 0)
+        elif inferred_freq.startswith('Q'):
+            # Create dummies for quarters if the data is quarterly
+            dataset['q1_2020'] = np.where((dataset.index.quarter == 1) & (dataset.index.year == 2020), 1, 0)
+            dataset['q2_2020'] = np.where((dataset.index.quarter == 2) & (dataset.index.year == 2020), 1, 0)
+
     return dataset
 
 def remove_colinear_features(df, vif_threshold=10):
@@ -144,6 +164,9 @@ def exploratory_analysis(df):
     display(corr_matrix.style.background_gradient(cmap='coolwarm'))
 
     predictor_variables = df.columns.drop(target_variable)
+
+    # drop dummy variables from predictor_variables.
+    predictor_variables = [var for var in predictor_variables if not var.startswith(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'q1', 'q2'))]
     df_temp = df.copy().dropna()
 
     for predictor in predictor_variables:
@@ -285,16 +308,25 @@ def create_lags(df, lags=5):
         raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
 
     def create_lags_for_df(dataframe, lags):
-        original_columns = dataframe.columns
+        # Identify the dummy columns that should not be lagged
+        dummy_columns = [col for col in dataframe.columns if col.startswith(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'q1', 'q2'))]
+
+        # Select only the columns that are not dummies
+        non_dummy_columns = [col for col in dataframe.columns if col not in dummy_columns]
+
+        # Create a DataFrame to store lagged features
         lagged_df = dataframe.copy()
+
+        # Create lags only for non-dummy variables
         for lag in range(1, lags + 1):
-            shifted = dataframe[original_columns].shift(lag)
-            shifted.columns = [f'{col}_lag{lag}' for col in original_columns]
+            shifted = dataframe[non_dummy_columns].shift(lag)
+            shifted.columns = [f'{col}_lag{lag}' for col in non_dummy_columns]
             lagged_df = pd.concat([lagged_df, shifted], axis=1)
 
         # Drop rows with NaN values in lagged features
         lagged_df = lagged_df.dropna()
         return lagged_df
+
 
     if isinstance(df, pd.DataFrame):
         df = create_lags_for_df(df, lags)
@@ -531,7 +563,7 @@ def compare_fitted_models(ols_output):
 
     return stargazer
 
-def one_stop_analysis(file_location, lags=5, splits=1, train_share=0.9, vif_threshold=10, p_cutoff=0.05):
+def auto_regressor(file_location, lags=5, splits=1, train_share=0.9, vif_threshold=10, p_cutoff=0.05, show_removed_features = False):
     """
     A comprehensive function that performs the entire process from data loading to model analysis and displays the results.
 
@@ -564,7 +596,7 @@ def one_stop_analysis(file_location, lags=5, splits=1, train_share=0.9, vif_thre
     splits_dict = create_splits(df, lags=lags, splits=splits, train_share=train_share)
 
     # Step 3: Perform OLS regression on each split
-    ols_output = regression_OLS(splits_dict, p_cutoff=p_cutoff)
+    ols_output = regression_OLS(splits_dict, p_cutoff=p_cutoff, show_removed_features = show_removed_features)
 
     # Step 4: Fit and predict using the models
     fit_predict_output = fit_and_predict(ols_output)
