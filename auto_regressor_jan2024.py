@@ -13,9 +13,7 @@ import string
 import random
 from IPython.display import display  # For displaying DataFrame styles in Jupyter Notebook
 
-
-## To do: do prediction, chart actual vs. fitted/predicted.
-
+## To do: do prediction
 
 def load_df(file_location):
     """
