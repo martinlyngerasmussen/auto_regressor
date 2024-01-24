@@ -43,3 +43,64 @@ class TestCompilerFunction(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+class TestLoadDF(unittest.TestCase):
+    def setUp(self):
+        self.file_location = "/path/to/dataset.csv"
+
+    def test_load_df_file_not_found(self):
+        # Test if the file does not exist
+        with self.assertRaises(FileNotFoundError):
+            load_df(self.file_location)
+
+    def test_load_df_file_not_readable(self):
+        # Test if the file is not readable
+        # Create a file with no read permissions
+        open(self.file_location, 'a').close()
+        os.chmod(self.file_location, 0o000)
+
+        with self.assertRaises(PermissionError):
+            load_df(self.file_location)
+
+        # Restore the file permissions
+        os.chmod(self.file_location, 0o644)
+
+    def test_load_df_invalid_file_format(self):
+        # Test if the file format is invalid
+        self.file_location = "/path/to/dataset.txt"
+
+        with self.assertRaises(ValueError):
+            load_df(self.file_location)
+
+    def test_load_df_datetime_column_found(self):
+        # Test if a datetime column is found
+        dataset = pd.DataFrame({
+            'date': pd.date_range(start='1/1/2022', periods=100),
+            'y': np.random.randn(100),
+            'X1': np.random.randn(100),
+            'X2': np.random.randn(100)
+        })
+
+        dataset.to_csv(self.file_location, index=False)
+
+        df = load_df(self.file_location)
+
+        self.assertTrue('date' in df.columns)
+        self.assertTrue(isinstance(df.index, pd.DatetimeIndex))
+
+    def test_load_df_datetime_column_not_found(self):
+        # Test if a datetime column is not found
+        dataset = pd.DataFrame({
+            'not_date': pd.date_range(start='1/1/2022', periods=100),
+            'y': np.random.randn(100),
+            'X1': np.random.randn(100),
+            'X2': np.random.randn(100)
+        })
+
+        dataset.to_csv(self.file_location, index=False)
+
+        with self.assertRaises(ValueError):
+            load_df(self.file_location)
+
+    def tearDown(self):
+        # Remove the sample dataset file
+        os.remove(self.file_location)

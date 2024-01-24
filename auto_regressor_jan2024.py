@@ -90,16 +90,15 @@ def load_df(file_location):
 
 def remove_colinear_features(df, vif_threshold=10):
     """
-    Remove collinear features from a DataFrame based on the Variance Inflation Factor (VIF).
+    Removes collinear features from a DataFrame based on the Variance Inflation Factor (VIF).
 
     Parameters:
-    - df (DataFrame): The input DataFrame containing the target variable and predictor variables.
-    - vif_threshold (float): The threshold value for VIF. Features with VIF greater than this threshold will be removed.
+        df (pandas.DataFrame): The input DataFrame containing the target variable and predictor variables.
+        vif_threshold (float, optional): The threshold value for VIF. Default is 10.
 
     Returns:
-    - df (DataFrame): The modified DataFrame with collinear features removed.
+        pandas.DataFrame: The modified DataFrame with collinear features removed.
     """
-
     # Assuming 'y' is the first column and should be excluded from VIF calculation
     y = df.iloc[:, 0]  # Store 'y' separately
 
@@ -142,13 +141,13 @@ def remove_colinear_features(df, vif_threshold=10):
 
 def exploratory_analysis(df):
     """
-    Perform exploratory analysis on the dataset with the first column as the target variable.
+    Perform exploratory analysis on a DataFrame.
 
-    Parameters:
-    - df (DataFrame): The input DataFrame containing the target variable and predictor variables.
+    Args:
+        df (pd.DataFrame): The input DataFrame.
 
     Returns:
-    None. Displays correlation and scatter plots.
+        pd.DataFrame: The modified DataFrame after performing exploratory analysis.
     """
 
     # Assuming 'y' is the first column and is the target variable
@@ -194,13 +193,13 @@ def exploratory_analysis(df):
 
 def non_linearity(df):
     """
-    Perform exploratory analysis on the dataset with the first column as the target variable.
+    Check for non-linearity between predictor variables and the target variable using Spearman's rank correlation.
 
     Parameters:
-    - df (DataFrame): The input DataFrame containing the target variable and predictor variables.
+    df (pandas.DataFrame): The input dataframe containing the predictor and target variables.
 
     Returns:
-    None. Displays correlation and scatter plots.
+    pandas.DataFrame: The modified dataframe with additional columns for squared predictor variables if non-linearity is detected.
     """
 
     # Assuming 'y' is the first column and is the target variable
@@ -222,31 +221,31 @@ def non_linearity(df):
     return df_temp
 
 def generate_random_string():
-    # Generate a random letter (either uppercase or lowercase)
+    """
+    Generate a random two-character string consisting of a random letter (either uppercase or lowercase)
+    followed by a random digit.
+
+    Returns:
+        str: A random two-character string.
+    """
     random_letter = random.choice(string.ascii_letters)
-
-    # Generate a random digit
     random_digit = random.choice(string.digits)
-
-    # Combine them to form a two-character string
     return random_letter + random_digit
 
 def create_splits(df, lags=5, splits=5, train_share=0.8):
     """
-    Prepare the data for regression analysis by performing the following steps:
-    1. Split the DataFrame into multiple splits, where each split is a DataFrame.
-    2. Divide each split into a train and test set.
-    3. Create lagged features for the train and test sets of each split.
+    Split the input DataFrame into multiple train-test splits with lagged features.
 
     Parameters:
-    - df (pd.DataFrame): The dataframe to be split.
-    - lags (int): The number of lagged variables to create for each predictor variable (default: 5).
-    - splits (int): The number of splits to create from the DataFrame (default: 5).
-    - train_share (float): The proportion of data to use for training (default: 0.8).
+    - df (pd.DataFrame): The input DataFrame to be split.
+    - lags (int): The number of lagged features to create.
+    - splits (int): The number of train-test splits to create.
+    - train_share (float): The proportion of data to be used for training.
 
     Returns:
-    - splits_dict (dict): A dictionary containing the splits of the DataFrame, where each split is further divided into train and test sets.
+    - splits_dict (dict): A dictionary containing the train and test sets for each split.
     """
+
     # Validate input parameters
     if not isinstance(df, pd.DataFrame):
         raise TypeError("Input df must be a pandas DataFrame.")
@@ -293,15 +292,16 @@ def create_splits(df, lags=5, splits=5, train_share=0.8):
 
 def create_lags(df, lags=5):
     """
-    Create lagged features for a dataframe or a dictionary of dataframes.
+    Create lagged features for a pandas DataFrame or a dictionary of DataFrames.
 
     Parameters:
-    df (pd.DataFrame or dict): The dataframe or dictionary of dataframes to create lagged features for.
-    lags (int): The number of lagged features to create.
+    df (pd.DataFrame or dict): The input DataFrame or dictionary of DataFrames.
+    lags (int): The number of lagged features to create. Default is 5.
 
     Returns:
-    pd.DataFrame or dict: The dataframe or dictionary of dataframes with lagged features created.
+    pd.DataFrame or dict: The DataFrame or dictionary of DataFrames with lagged features.
     """
+
     if not (isinstance(df, pd.DataFrame) or isinstance(df, dict)):
         raise TypeError("Input must be a pandas DataFrame or a dictionary of DataFrames.")
 
@@ -341,14 +341,15 @@ def create_lags(df, lags=5):
 
 def regression_OLS(splits_dict, p_cutoff=0.05, show_removed_features=False):
     """
-    Perform OLS regression for each split in the splits_dict and return a structured dictionary.
+    Perform Ordinary Least Squares (OLS) regression on the given data.
 
     Parameters:
-    - splits_dict (dict): Dictionary containing splits of the DataFrame.
-    - p_cutoff (float): The p-value cutoff for feature elimination. Default is 0.05.
+        splits_dict (dict): A dictionary containing the data splits for training and testing.
+        p_cutoff (float, optional): The p-value cutoff for feature elimination. Defaults to 0.05.
+        show_removed_features (bool, optional): Whether to print the removed features for each split. Defaults to False.
 
     Returns:
-    - dict: A structured dictionary with each split's data and fitted model.
+        dict: A dictionary containing the data splits, fitted models, and removed features (if applicable).
     """
 
     # validate that p_cutoff is a float between 0 and 1
@@ -414,21 +415,18 @@ def regression_OLS(splits_dict, p_cutoff=0.05, show_removed_features=False):
                 'model': fitted_model
             }
 
-
-
     return final_dict
 
 def fit_and_predict(ols_output):
     """
-    Creates a single dataframe containing actual and predicted values of y for both train and test datasets across all splits.
+    Fits and predicts using the OLS output.
 
-    Parameters:
-    - ols_output (dict): The output from regression_OLS function, containing data and models for each split.
+    Args:
+        ols_output (dict): A dictionary containing the OLS output.
 
     Returns:
-    - pd.DataFrame: A combined dataframe with the actual and predicted values of y across all splits.
+        pandas.DataFrame: A DataFrame containing the fitted and predicted values for each split.
     """
-
     def prepare_data_for_prediction(df, model, model_features):
         # Assuming 'y' is the first column
         y = df.iloc[:, 0]
@@ -475,6 +473,15 @@ def fit_and_predict(ols_output):
     return all_splits_df
 
 def oos_summary_stats(fit_and_predict_output):
+    """
+    Calculate summary statistics for out-of-sample predictions.
+
+    Parameters:
+    fit_and_predict_output (DataFrame): DataFrame containing the predicted and actual values for each split.
+
+    Returns:
+    summary_stats (DataFrame): DataFrame containing the summary statistics for each split.
+    """
     # Initialize an empty DataFrame to store summary statistics
     summary_stats = pd.DataFrame()
 
@@ -542,14 +549,13 @@ def oos_summary_stats(fit_and_predict_output):
 
 def compare_fitted_models(ols_output):
     """
-    Modified to work with output from regression_OLS function.
-    Compares fitted models using Stargazer.
+    Compare the fitted models using the Stargazer library.
 
     Parameters:
-    ols_output (dict): Output from regression_OLS function.
+    ols_output (dict): A dictionary containing the output of OLS regression for different models.
 
     Returns:
-    Stargazer object: Comparison table of models.
+    stargazer (Stargazer): The Stargazer object containing the comparison table of the fitted models.
     """
     from stargazer.stargazer import Stargazer
 
@@ -563,19 +569,28 @@ def compare_fitted_models(ols_output):
 
 def auto_regressor(file_location, lags=5, splits=1, train_share=0.9, vif_threshold=10, p_cutoff=0.05, show_removed_features = False):
     """
-    A comprehensive function that performs the entire process from data loading to model analysis and displays the results.
+    Performs automated econometric analysis using the following steps:
+    1. Load and preprocess the data
+    2. Perform exploratory analysis
+    3. Create splits and lagged features
+    4. Perform OLS regression on each split
+    5. Fit and predict using the models
+    6. Calculate out-of-sample summary statistics
+    7. Display the results: summary statistics, model comparison, and model performance (in-sample vs. out-of-sample)
 
     Parameters:
-    - file_location (str): File location of the dataset.
-    - lags (int): Number of lagged variables to create for each predictor variable.
-    - splits (int): Number of splits to create from the DataFrame.
-    - train_share (float): Proportion of data to use for training.
-    - vif_threshold (float): Threshold value for Variance Inflation Factor.
-    - p_cutoff (float): P-value cutoff for feature elimination in OLS regression.
+    - file_location (str): The file path of the dataset to be analyzed.
+    - lags (int): The number of lagged features to create.
+    - splits (int): The number of splits to create for cross-validation.
+    - train_share (float): The proportion of data to use for training.
+    - vif_threshold (float): The threshold for removing collinear features based on VIF.
+    - p_cutoff (float): The p-value threshold for removing insignificant features.
+    - show_removed_features (bool): Whether to display the removed features during regression.
 
     Returns:
-    None. Outputs are displayed within the function.
+    - None
     """
+
     # Step 1: Load and preprocess the data
     df = load_df(file_location)
     df = remove_colinear_features(df, vif_threshold=vif_threshold)
