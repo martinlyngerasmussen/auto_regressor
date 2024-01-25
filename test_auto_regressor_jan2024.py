@@ -1,7 +1,7 @@
 import unittest
 import pandas as pd
 import numpy as np
-from auto_regressor_jan2024 import compiler_function
+from auto_regressor import compiler_function
 
 class TestCompilerFunction(unittest.TestCase):
     def setUp(self):
