@@ -11,9 +11,8 @@ from scipy.stats import spearmanr
 from stargazer.stargazer import Stargazer
 import string
 import random
-from IPython.display import display  # For displaying DataFrame styles in Jupyter Notebook
+from IPython.display import display
 
-## To do: do prediction
 
 def load_df(file_location):
     """
@@ -178,19 +177,6 @@ def exploratory_analysis(df):
         print(f"Spearman's correlation between {predictor} and {target_variable}: {correlation:.2f}")
         print(f"P-value: {p_value:.3f}")
 
-        # Determine if transformation might be necessary
-        if p_value < 0.05 and correlation not in [-1, 1]:
-            print(f"Potential non-linear relationship detected for {predictor}. Adding var^2 * sign[var].")
-
-            ## Add a column with the square of the predictor variable (keep the sign, + or -, of the original variable. Also keep the original column)
-            df_temp[f"{predictor}_squared"] = np.sign(df_temp[predictor]) * df_temp[predictor] ** 2
-
-        else:
-            print(f"No strong evidence of non-linear relationship between {predictor} and {target_variable}.")
-        print()
-
-    return df_temp
-
 def non_linearity(df):
     """
     Check for non-linearity between predictor variables and the target variable using Spearman's rank correlation.
@@ -201,6 +187,8 @@ def non_linearity(df):
     Returns:
     pandas.DataFrame: The modified dataframe with additional columns for squared predictor variables if non-linearity is detected.
     """
+
+    df_final = df.copy()
 
     # Assuming 'y' is the first column and is the target variable
     target_variable = df.columns[0]
@@ -216,9 +204,9 @@ def non_linearity(df):
         # Determine if transformation might be necessary
         if p_value < 0.05 and correlation not in [-1, 1]:
             ## Add a column with the square of the predictor variable (keep the sign, + or -, of the original variable. Also keep the original column)
-            df_temp[f"{predictor}_squared_sign_kept"] = np.sign(df_temp[predictor]) * df_temp[predictor] ** 2
+            df_final[f"{predictor}_squared_sign_kept"] = np.sign(df_final[predictor]) * df_final[predictor] ** 2
 
-    return df_temp
+    return df_final
 
 def generate_random_string():
     """
@@ -321,23 +309,17 @@ def create_lags(df, lags=5):
             shifted.columns = [f'{col}_lag{lag}' for col in non_dummy_columns]
             lagged_df = pd.concat([lagged_df, shifted], axis=1)
 
-        # Drop rows with NaN values in lagged features
-        lagged_df = lagged_df.dropna()
+        # Drop rows with NaN values that occur at the start of the dataset for the first n = lags + 1 rows
+        start_nan_rows = lagged_df.iloc[:lags+1].isna().any(axis=1)
+        if start_nan_rows.any():
+            lagged_df = lagged_df.iloc[start_nan_rows.sum():]
+
         return lagged_df
 
-
-    if isinstance(df, pd.DataFrame):
-        df = create_lags_for_df(df, lags)
-    elif isinstance(df, dict):
-        for split in df:
-            train_key = next((key for key in df[split] if key.startswith('train')), None)
-            test_key = next((key for key in df[split] if key.startswith('test')), None)
-            if train_key:
-                df[split][train_key] = create_lags_for_df(df[split][train_key], lags)
-            if test_key:
-                df[split][test_key] = create_lags_for_df(df[split][test_key], lags)
-
-    return df
+    if isinstance(df, dict):
+        return {key: create_lags_for_df(df[key], lags) for key in df}
+    else:
+        return create_lags_for_df(df, lags)
 
 def regression_OLS(splits_dict, p_cutoff=0.05, show_removed_features=False):
     """
@@ -365,6 +347,8 @@ def regression_OLS(splits_dict, p_cutoff=0.05, show_removed_features=False):
     removed_features = []
 
     def fit_model(train_data):
+        train_data = train_data.dropna()  # Drop rows with NaN values
+
         # Assuming 'y' is the first column
         y = train_data.iloc[:, 0]
         X = train_data.iloc[:, 1:]
@@ -500,7 +484,7 @@ def oos_summary_stats(fit_and_predict_output):
     # Calculate statistics for each split
     for split_name, split_id in zip(split_names, split_ids):
         # Select the non-NaN predicted and actual values for the current split
-        mask = ~fit_and_predict_output[split_name].isna()
+        mask = ~fit_and_predict_output[split_name].isna() & ~fit_and_predict_output['y_actual'].isna()
         y_actual = fit_and_predict_output.loc[mask, 'y_actual']
         y_pred = fit_and_predict_output.loc[mask, split_name]
 
@@ -642,3 +626,4 @@ def auto_regressor(file_location, lags=5, splits=1, train_share=0.9, vif_thresho
     print("")
 
     fit_predict_output.plot()
+    print(fit_predict_output.tail())
