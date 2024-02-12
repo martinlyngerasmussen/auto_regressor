@@ -146,7 +146,7 @@ def exploratory_analysis(df):
         df (pd.DataFrame): The input DataFrame.
 
     Returns:
-        pd.DataFrame: The modified DataFrame after performing exploratory analysis.
+        None: This function will output scatter plots directly.
     """
 
     # Assuming 'y' is the first column and is the target variable
@@ -159,23 +159,26 @@ def exploratory_analysis(df):
     print("Correlation matrix:")
     display(corr_matrix.style.background_gradient(cmap='coolwarm'))
 
-    predictor_variables = df.columns.drop(target_variable)
+    # Drop dummy variables and the target variable from the list of predictors
+    predictor_variables = [var for var in df.columns[1:] if not var.startswith(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'q1', 'q2'))]
 
-    # drop dummy variables from predictor_variables.
-    predictor_variables = [var for var in predictor_variables if not var.startswith(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'q1', 'q2'))]
-    df_temp = df.copy().dropna()
+    # Define the number of rows and columns for the subplots based on the number of predictor variables
+    num_predictors = len(predictor_variables)
+    num_cols = 3  # for example, you can arrange the plots in 3 columns
+    num_rows = (num_predictors + num_cols - 1) // num_cols  # calculate the number of rows needed
 
-    for predictor in predictor_variables:
-        # Visual inspection using scatter plot
-        sns.scatterplot(x=df[predictor], y=df[target_variable])
-        plt.title(f"Scatter plot of {predictor} vs {target_variable}")
-        plt.show()
+    # Create a figure with subplots
+    plt.figure(figsize=(num_cols * 5, num_rows * 5))  # Adjust the size as needed
 
-        # Statistical test for non-linearity using Spearman's rank correlation
-        correlation, p_value = spearmanr(df_temp[predictor], df_temp[target_variable])
+    for i, predictor in enumerate(predictor_variables, 1):
+        plt.subplot(num_rows, num_cols, i)  # Create a subplot for each predictor
+        plt.scatter(df[predictor], df[target_variable])  # Create the scatter plot
+        plt.title(f"{predictor} (X) vs. {target_variable} (y)")  # Set the title
+        plt.xlabel(predictor)
+        plt.ylabel(target_variable)
 
-        print(f"Spearman's correlation between {predictor} and {target_variable}: {correlation:.2f}")
-        print(f"P-value: {p_value:.3f}")
+    plt.tight_layout()  # Adjust the layout so the plots are neatly arranged
+    plt.show()
 
 def non_linearity(df):
     """
@@ -244,7 +247,7 @@ def create_splits(df, lags=5, splits=5, train_share=0.8):
     if not isinstance(lags, int) or lags < 0:
         raise ValueError("Parameter 'lags' must be a non-negative integer.")
 
-    if not isinstance(train_share, float) or not 0 < train_share < 1:
+    if not isinstance(train_share, float) or not 0 < train_share <= 1:
         raise ValueError("Parameter 'train_share' must be a float between 0 and 1.")
 
     # Split the DataFrame into multiple splits
@@ -551,6 +554,30 @@ def compare_fitted_models(ols_output):
 
     return stargazer
 
+def prediction_dummy(df):
+    # This function will create a dummy variable that is 1 if
+    # the end date of the last observation of -ALL- the predictors
+    # is later than the end date of the last observation of the target variable
+
+    # check that the index is a datetime index. If not, make the index a datetime index
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index)
+
+    # Assuming 'y' is the first column and is the target variable
+    target_variable = df.columns[0]
+
+    # Get the last date of the target variable
+    last_date_target = df[target_variable].dropna().index[-1] # Ensure to drop NA values to get the actual last date of observation
+
+    # Get the last dates of all predictors and then find the maximum (latest) among them
+    last_date_predictors = df.drop(target_variable, axis=1).apply(lambda x: x.dropna().index[-1]).min()
+
+    # Create a dummy variable that is 1 if the last date of the predictors is later than the last date of the target variable
+    prediction_dummy = int(last_date_predictors > last_date_target)
+
+    if prediction_dummy == True:
+        return True
+
 def auto_regressor(file_location, lags=5, splits=1, train_share=0.9, vif_threshold=10, p_cutoff=0.05, show_removed_features = False):
     """
     Performs automated econometric analysis using the following steps:
@@ -580,10 +607,31 @@ def auto_regressor(file_location, lags=5, splits=1, train_share=0.9, vif_thresho
     df = remove_colinear_features(df, vif_threshold=vif_threshold)
     df = non_linearity(df)
 
+    if prediction_dummy(df):
+        print("")
+        print("#############################################")
+        print("PREDICTION")
+        print("#############################################")
+        print("")
+
+        df_full = df.copy()
+        df_full = create_splits(df_full, lags=lags, splits=1, train_share=float(1))
+        ols_output_full = regression_OLS(df_full, p_cutoff=p_cutoff, show_removed_features = show_removed_features)
+        model_comparison_table_full = compare_fitted_models(ols_output_full)
+        fit_predict_output_full = fit_and_predict(ols_output_full)
+
+        ## drop the "y_pred" columns
+        fit_predict_output_full = fit_predict_output_full.drop(columns=[col for col in fit_predict_output_full.columns if 'y_pred' in col])
+
+        fit_predict_output_full.tail(24).plot()
+        plt.show()
+        display(model_comparison_table_full)
+        print(fit_predict_output_full.tail())
+
 
     print("")
     print("#############################################")
-    print("PART 1: EXPLORATORY ANALYSIS")
+    print("EXPLORATORY ANALYSIS")
     print("#############################################")
     print("")
 
@@ -603,9 +651,9 @@ def auto_regressor(file_location, lags=5, splits=1, train_share=0.9, vif_thresho
 
 
     print("")
-    print("#############################################")
-    print("PART 2: OUT-OF-SAMPLE SUMMARY STATISTICS")
-    print("#############################################")
+    print("############################################################")
+    print("ROBUSTNESS: OUT-OF-SAMPLE SUMMARY STATISTICS ACROSS SPLITS")
+    print("############################################################")
 
     display(summary_stats_table)  # Display summary statistics in Jupyter Notebook
 
@@ -613,17 +661,21 @@ def auto_regressor(file_location, lags=5, splits=1, train_share=0.9, vif_thresho
     model_comparison_table = compare_fitted_models(ols_output)
     print("")
     print("#############################################")
-    print("PART 3: MODEL COMPARISON")
+    print("PART 3: ROBUSTNESS OF MODELS ACROSS SPLITS")
     print("#############################################")
     print("")
 
     display(model_comparison_table)  # Display model comparison in Jupyter Notebook
 
     print("")
-    print("#############################################")
-    print("PART 4: MODEL PERFORMANCE: IN-SAMPLE VS. OUT-OF-SAMPLE")
-    print("#############################################")
+    print("#########################################################################################")
+    print("PART 4: ROBUSTNESS OF PERFORMANCE: IN-SAMPLE VS. OUT-OF-SAMPLE PERFORMANCE ACROSS SPLITS")
+    print("#########################################################################################")
     print("")
 
     fit_predict_output.plot()
-    print(fit_predict_output.tail())
+
+    ## change the y axis such that the range covers 90% of the data
+    plt.ylim([fit_predict_output.quantile(0.02).min(), fit_predict_output.quantile(0.98).max()])
+
+    plt.show()
