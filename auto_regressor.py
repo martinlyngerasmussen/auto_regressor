@@ -16,14 +16,21 @@ from IPython.display import display
 
 def load_df(file_location):
     """
-    Constructs a dataframe with data from a csv file and removes colinear features.
+    Load a dataset from a file and perform necessary preprocessing.
 
     Parameters:
-    - file_location (str): The file location of the dataset.
+    file_location (str): The path to the file.
 
     Returns:
-    - df (pd.DataFrame): The dataframe with colinear features removed.
+    pandas.DataFrame: The loaded dataset.
+
+    Raises:
+    FileNotFoundError: If the file does not exist.
+    PermissionError: If the file is not readable.
+    ValueError: If the file format is not supported or no datetime column is found.
+    IOError: If there is an error reading the file.
     """
+
     # Check if the file exists
     if not os.path.exists(file_location):
         raise FileNotFoundError(f"The file at {file_location} does not exist.")
@@ -80,24 +87,33 @@ def load_df(file_location):
             dataset['apr_2020'] = np.where((dataset.index.month == 4) & (dataset.index.year == 2020), 1, 0)
             dataset['may_2020'] = np.where((dataset.index.month == 5) & (dataset.index.year == 2020), 1, 0)
             dataset['jun_2020'] = np.where((dataset.index.month == 6) & (dataset.index.year == 2020), 1, 0)
+            dataset['jul_2020'] = np.where((dataset.index.month == 7) & (dataset.index.year == 2020), 1, 0)
+            dataset['aug_2020'] = np.where((dataset.index.month == 8) & (dataset.index.year == 2020), 1, 0)
+            dataset['sep_2020'] = np.where((dataset.index.month == 9) & (dataset.index.year == 2020), 1, 0)
+            dataset['oct_2020'] = np.where((dataset.index.month == 10) & (dataset.index.year == 2020), 1, 0)
+            dataset['nov_2020'] = np.where((dataset.index.month == 11) & (dataset.index.year == 2020), 1, 0)
+            dataset['dec_2020'] = np.where((dataset.index.month == 12) & (dataset.index.year == 2020), 1, 0)
         elif inferred_freq.startswith('Q'):
             # Create dummies for quarters if the data is quarterly
             dataset['q1_2020'] = np.where((dataset.index.quarter == 1) & (dataset.index.year == 2020), 1, 0)
             dataset['q2_2020'] = np.where((dataset.index.quarter == 2) & (dataset.index.year == 2020), 1, 0)
+            dataset['q3_2020'] = np.where((dataset.index.quarter == 3) & (dataset.index.year == 2020), 1, 0)
+            dataset['q4_2020'] = np.where((dataset.index.quarter == 4) & (dataset.index.year == 2020), 1, 0)
 
     return dataset
 
 def remove_colinear_features(df, vif_threshold=10):
     """
-    Removes collinear features from a DataFrame based on the Variance Inflation Factor (VIF).
+    Remove collinear features from a DataFrame based on the Variance Inflation Factor (VIF).
 
     Parameters:
-        df (pandas.DataFrame): The input DataFrame containing the target variable and predictor variables.
-        vif_threshold (float, optional): The threshold value for VIF. Default is 10.
+    df (pandas.DataFrame): The input DataFrame containing the predictor variables.
+    vif_threshold (float, optional): The threshold value for VIF. Default is 10.
 
     Returns:
-        pandas.DataFrame: The modified DataFrame with collinear features removed.
+    pandas.DataFrame: The modified DataFrame with collinear features removed.
     """
+
     # Assuming 'y' is the first column and should be excluded from VIF calculation
     y = df.iloc[:, 0]  # Store 'y' separately
 
@@ -146,31 +162,31 @@ def exploratory_analysis(df):
         df (pd.DataFrame): The input DataFrame.
 
     Returns:
-        None: This function will output scatter plots directly.
+        None
     """
 
     # Assuming 'y' is the first column and is the target variable
     target_variable = df.columns[0]
     print(f"Target variable selected: {target_variable}")
 
+    # Drop dummy variables and the target variable from the list of predictors
+    variables_no_dummies = [var for var in df.columns[1:] if not var.startswith(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'q1', 'q2', 'q3', 'q4'))]
+
     # Create a correlation matrix with scatter plots for each pair of variables
-    corr_matrix = df.corr()
+    corr_matrix = df[variables_no_dummies].corr()
     print("")
     print("Correlation matrix:")
     display(corr_matrix.style.background_gradient(cmap='coolwarm'))
 
-    # Drop dummy variables and the target variable from the list of predictors
-    predictor_variables = [var for var in df.columns[1:] if not var.startswith(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'q1', 'q2'))]
-
     # Define the number of rows and columns for the subplots based on the number of predictor variables
-    num_predictors = len(predictor_variables)
+    num_predictors = len(variables_no_dummies)
     num_cols = 3  # for example, you can arrange the plots in 3 columns
     num_rows = (num_predictors + num_cols - 1) // num_cols  # calculate the number of rows needed
 
     # Create a figure with subplots
     plt.figure(figsize=(num_cols * 5, num_rows * 5))  # Adjust the size as needed
 
-    for i, predictor in enumerate(predictor_variables, 1):
+    for i, predictor in enumerate(variables_no_dummies, 1):
         plt.subplot(num_rows, num_cols, i)  # Create a subplot for each predictor
         plt.scatter(df[predictor], df[target_variable])  # Create the scatter plot
         plt.title(f"{predictor} (X) vs. {target_variable} (y)")  # Set the title
@@ -182,15 +198,15 @@ def exploratory_analysis(df):
 
 def non_linearity(df):
     """
-    Check for non-linearity between predictor variables and the target variable using Spearman's rank correlation.
+    Check for non-linearity between predictor variables and the target variable.
 
     Parameters:
     df (pandas.DataFrame): The input dataframe containing the predictor and target variables.
 
     Returns:
-    pandas.DataFrame: The modified dataframe with additional columns for squared predictor variables if non-linearity is detected.
-    """
+    pandas.DataFrame: The modified dataframe with additional columns for squared predictor variables.
 
+    """
     df_final = df.copy()
 
     # Assuming 'y' is the first column and is the target variable
@@ -208,6 +224,7 @@ def non_linearity(df):
         if p_value < 0.05 and correlation not in [-1, 1]:
             ## Add a column with the square of the predictor variable (keep the sign, + or -, of the original variable. Also keep the original column)
             df_final[f"{predictor}_squared_sign_kept"] = np.sign(df_final[predictor]) * df_final[predictor] ** 2
+            print(f"{predictor}_squared_sign_kept has been added as the relationship between {predictor} and {target_variable} is non-linear")
 
     return df_final
 
@@ -225,16 +242,18 @@ def generate_random_string():
 
 def create_splits(df, lags=5, splits=5, train_share=0.8):
     """
-    Split the input DataFrame into multiple train-test splits with lagged features.
+    Split a pandas DataFrame into multiple train-test splits with lagged features.
 
     Parameters:
-    - df (pd.DataFrame): The input DataFrame to be split.
-    - lags (int): The number of lagged features to create.
-    - splits (int): The number of train-test splits to create.
-    - train_share (float): The proportion of data to be used for training.
+        df (pd.DataFrame): The input DataFrame to be split.
+        lags (int): The number of lagged features to create.
+        splits (int): The number of train-test splits to create.
+        train_share (float): The proportion of data to use for training.
 
     Returns:
-    - splits_dict (dict): A dictionary containing the train and test sets for each split.
+        dict: A dictionary containing the train and test sets for each split.
+            The keys are the split names and the values are dictionaries
+            with keys 'train_split_{split_id}' and 'test_split_{split_id}'.
     """
 
     # Validate input parameters
@@ -286,11 +305,17 @@ def create_lags(df, lags=5):
     Create lagged features for a pandas DataFrame or a dictionary of DataFrames.
 
     Parameters:
-    df (pd.DataFrame or dict): The input DataFrame or dictionary of DataFrames.
-    lags (int): The number of lagged features to create. Default is 5.
+    - df: pandas DataFrame or dictionary of DataFrames
+        The input data to create lagged features for.
+    - lags: int, optional (default=5)
+        The number of lagged features to create.
 
     Returns:
-    pd.DataFrame or dict: The DataFrame or dictionary of DataFrames with lagged features.
+    - lagged_df: pandas DataFrame or dictionary of DataFrames
+        The DataFrame(s) with lagged features.
+
+    Raises:
+    - TypeError: If the input is not a pandas DataFrame or a dictionary of DataFrames.
     """
 
     if not (isinstance(df, pd.DataFrame) or isinstance(df, dict)):
@@ -298,7 +323,7 @@ def create_lags(df, lags=5):
 
     def create_lags_for_df(dataframe, lags):
         # Identify the dummy columns that should not be lagged
-        dummy_columns = [col for col in dataframe.columns if col.startswith(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'q1', 'q2'))]
+        dummy_columns = [col for col in dataframe.columns if col.startswith(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'q1', 'q2', 'q3', 'q4'))]
 
         # Select only the columns that are not dummies
         non_dummy_columns = [col for col in dataframe.columns if col not in dummy_columns]
@@ -329,12 +354,12 @@ def regression_OLS(splits_dict, p_cutoff=0.05, show_removed_features=False):
     Perform Ordinary Least Squares (OLS) regression on the given data.
 
     Parameters:
-        splits_dict (dict): A dictionary containing the data splits for training and testing.
-        p_cutoff (float, optional): The p-value cutoff for feature elimination. Defaults to 0.05.
-        show_removed_features (bool, optional): Whether to print the removed features for each split. Defaults to False.
+    - splits_dict (dict): A dictionary containing the data splits for training and testing.
+    - p_cutoff (float, optional): The p-value cutoff for feature elimination. Defaults to 0.05.
+    - show_removed_features (bool, optional): Whether to print the removed features for each split. Defaults to False.
 
     Returns:
-        dict: A dictionary containing the data splits, fitted models, and removed features (if applicable).
+    - final_dict (dict): A dictionary containing the data splits, models, and removed features (if applicable).
     """
 
     # validate that p_cutoff is a float between 0 and 1
@@ -406,15 +431,28 @@ def regression_OLS(splits_dict, p_cutoff=0.05, show_removed_features=False):
 
 def fit_and_predict(ols_output):
     """
-    Fits and predicts using the OLS output.
+    Fits and predicts the values for each split in the OLS output.
 
     Args:
-        ols_output (dict): A dictionary containing the OLS output.
+        ols_output (dict): A dictionary containing the OLS output for each split.
 
     Returns:
-        pandas.DataFrame: A DataFrame containing the fitted and predicted values for each split.
+        pandas.DataFrame: A DataFrame containing the actual and predicted values for each split.
     """
+
     def prepare_data_for_prediction(df, model, model_features):
+        """
+        Prepares the data for prediction by aligning columns with model features.
+
+        Args:
+            df (pandas.DataFrame): The input DataFrame.
+            model (statsmodels.regression.linear_model.RegressionResultsWrapper): The regression model.
+            model_features (list): The list of model features.
+
+        Returns:
+            pandas.DataFrame: The prepared DataFrame for prediction.
+            pandas.Series: The target variable.
+        """
         # Assuming 'y' is the first column
         y = df.iloc[:, 0]
 
@@ -467,8 +505,13 @@ def oos_summary_stats(fit_and_predict_output):
     fit_and_predict_output (DataFrame): DataFrame containing the predicted and actual values for each split.
 
     Returns:
-    summary_stats (DataFrame): DataFrame containing the summary statistics for each split.
+    summary_stats (DataFrame): DataFrame containing the summary statistics for each split, including R2, MAE, MSE, RMSE,
+                              sample period, sample length, and split ID.
     """
+
+    # Initialize an empty DataFrame to store summary statistics
+    summary_stats = pd.DataFrame()
+
     # Initialize an empty DataFrame to store summary statistics
     summary_stats = pd.DataFrame()
 
@@ -544,6 +587,7 @@ def compare_fitted_models(ols_output):
     Returns:
     stargazer (Stargazer): The Stargazer object containing the comparison table of the fitted models.
     """
+
     from stargazer.stargazer import Stargazer
 
     models = [content['model'] for content in ols_output.values()]
@@ -555,9 +599,15 @@ def compare_fitted_models(ols_output):
     return stargazer
 
 def prediction_dummy(df):
-    # This function will create a dummy variable that is 1 if
-    # the end date of the last observation of -ALL- the predictors
-    # is later than the end date of the last observation of the target variable
+    """
+    Checks if the last date of the predictors is later than the last date of the target variable.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame containing the target variable and predictors.
+
+    Returns:
+        bool: True if the last date of the predictors is later than the last date of the target variable, False otherwise.
+    """
 
     # check that the index is a datetime index. If not, make the index a datetime index
     if not isinstance(df.index, pd.DatetimeIndex):
@@ -580,26 +630,19 @@ def prediction_dummy(df):
 
 def auto_regressor(file_location, lags=5, splits=1, train_share=0.9, vif_threshold=10, p_cutoff=0.05, show_removed_features = False):
     """
-    Performs automated econometric analysis using the following steps:
-    1. Load and preprocess the data
-    2. Perform exploratory analysis
-    3. Create splits and lagged features
-    4. Perform OLS regression on each split
-    5. Fit and predict using the models
-    6. Calculate out-of-sample summary statistics
-    7. Display the results: summary statistics, model comparison, and model performance (in-sample vs. out-of-sample)
+    Performs an automated regression analysis on a given dataset.
 
     Parameters:
-    - file_location (str): The file path of the dataset to be analyzed.
+    - file_location (str): The file path of the dataset.
     - lags (int): The number of lagged features to create.
     - splits (int): The number of splits to create for cross-validation.
     - train_share (float): The proportion of data to use for training.
     - vif_threshold (float): The threshold for removing collinear features based on VIF.
-    - p_cutoff (float): The p-value threshold for removing insignificant features.
+    - p_cutoff (float): The p-value threshold for feature selection.
     - show_removed_features (bool): Whether to display the removed features during regression.
 
     Returns:
-    - None
+    None
     """
 
     # Step 1: Load and preprocess the data
@@ -625,7 +668,10 @@ def auto_regressor(file_location, lags=5, splits=1, train_share=0.9, vif_thresho
 
         fit_predict_output_full.tail(24).plot()
         plt.show()
+        print("Model fitted using full dataset:")
         display(model_comparison_table_full)
+
+        print("Predictions:")
         print(fit_predict_output_full.tail())
 
 
@@ -652,7 +698,7 @@ def auto_regressor(file_location, lags=5, splits=1, train_share=0.9, vif_thresho
 
     print("")
     print("############################################################")
-    print("ROBUSTNESS: OUT-OF-SAMPLE SUMMARY STATISTICS ACROSS SPLITS")
+    print("ROBUSTNESS: OUT-OF-SAMPLE MODEL PERFORMANCE SPLITS")
     print("############################################################")
 
     display(summary_stats_table)  # Display summary statistics in Jupyter Notebook
@@ -661,7 +707,7 @@ def auto_regressor(file_location, lags=5, splits=1, train_share=0.9, vif_thresho
     model_comparison_table = compare_fitted_models(ols_output)
     print("")
     print("#############################################")
-    print("PART 3: ROBUSTNESS OF MODELS ACROSS SPLITS")
+    print("PART 3: SIMILARITY OF MODELS ACROSS SPLITS")
     print("#############################################")
     print("")
 
