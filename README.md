@@ -1,20 +1,26 @@
 # Autoregressor: simple and robust time series model selection
-auto_regressor.py is a very simple Python function that allows the user to fit a parsimonious OLS with lagged variables.
+auto_regressor.py automates the process of fitting and using a robust time series regression (OLS) model with lags. Plug in your data, run the script and the code will fit the best model + provide predictions.
 
-Please note that I am still working on the function; the function is not ready to be used yet. 
 
-The function does the following:
+## Autoregressor: Simple and Robust Time Series Model Selection
 
-**Removes colinear variables** by removing regressors with high variance inflation factors (VIF).
+This is what the code does:
 
-**Model Selection:** the function automatically finds the best model available for the specified (lags of) variables. More specifically, for a given set of variables (y and set of X), the code does backward selection: remove the (lags of) variable with the highest p-value, then re-run the model, remove the least significant variable. This process is repeated until the p-values of all (lags of) variables are below the specified threshold (*p_cutoff* default is 0.05).
+1. **Loading Your Dataset:**
+  - The `load_df` function is employed to import your dataset. It's crucial that your dataset contains either a datetime column or a column explicitly named 'date' or 'Date'.
 
-**...across multiple splits of the data:** to ensure that model selection is robust, the model is fit across multiple sub-samples ('splits') of the data. This means that the model is fitted separately for each split. Please note that the data is split before lags are added to avoid look-ahead bias.
+2. **Preprocessing and Analysis:**
+  - Call `remove_colinear_features` to weed out collinear variables, ensuring model integrity.
+  - Conduct an exploratory analysis to scrutinize relationships within your data and inspect for any non-linear dynamics between variables.
 
-Each split is divided into a 'training set', on which the model is fitted as well as a 'test set', on which the model is tested (but not fitted). *train_share* is 0.8 by default.
+3. **Creating Splits and Fitting Models:**
+  - Use `create_splits` to segment your data into distinct training and testing sets, integrating lagged features for thorough analysis.
+  - Apply `regression_OLS` to fit models, selectively honing in on significant features through an automated process.
 
-**The output of the function is the following (in order of output):**
-1. Out-of-sample model performance across splits: R2, MAE, MSE, RMSE, start date and end date
-2. A Pandas dataframe with the out-of-sample values across each split. This allows us to answer: how well does the model perform out-of-sample across different periods?
-3. Model summary for each training split as well as the full sample: coefficients etc.
-4. A Pandas dataframe that contains the model from each split, *fitted to the* **full dataset**. This answers the question: how well does a model fit on 2010-2015 data perform during 2021-2023?
+4. **Evaluation and Prediction:**
+  - Gauge model performance using `oos_summary_stats`, allowing for comparison of models across different data splits.
+  - Facilitate both in-sample and out-of-sample predictions with `fit_and_predict`, providing visual representation for in-depth evaluation.
+
+Optional Features:
+- Non-linearity Detection: Automatically detects and adjusts for non-linear relationships between variables, enhancing model accuracy.
+- Customization Options: Offers flexibility in adjusting the number of lags, splits, training share, VIF threshold, and p-value cutoff for tailored analysis.
