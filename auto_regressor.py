@@ -53,6 +53,7 @@ def load_df(file_location):
     # Check for a datetime column first
     datetime_columns = [col for col in dataset.columns if pd.api.types.is_datetime64_any_dtype(dataset[col])]
 
+
     if len(datetime_columns) > 0:
         # If there's a datetime column, use the first one found
         date_column = datetime_columns[0]
@@ -71,6 +72,19 @@ def load_df(file_location):
 
        # Assuming 'y' is the first column and should be excluded from VIF calculation
     y = dataset.iloc[:, 0]  # Store 'y' separately
+
+
+    print("")
+    print("##################")
+    print("DATASET LOADED")
+    print("##################")
+    print("")
+
+    # Print separately: y (dependent variable), X (independent variables), sample size, date range
+    print(f"Dependent variable (y): {dataset.columns[0]}")
+    print(f"Independent variables (X): {', '.join(dataset.columns[1:])}")
+    print(f"Sample size: {len(dataset)}")
+    print(f"Date range: {dataset.index.min()} to {dataset.index.max()}")
 
     # Infer the frequency of the dataset
     inferred_freq = pd.infer_freq(dataset.index)
